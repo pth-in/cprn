@@ -394,8 +394,10 @@ def fetch_and_ingest():
             except Exception as e:
                 print(f"Error inserting batch: {e}")
             
-        except Exception as e:
-            print(f"Error processing {entry_data.get('link', 'unknown')}: {e}")
+            # Cooldown between batches
+            if i + batch_size < len(incidents_to_ingest):
+                print(f"Cooling down for 10s before next batch...")
+                time.sleep(10)
 
 if __name__ == "__main__":
     if not SUPABASE_URL or not SUPABASE_KEY:
