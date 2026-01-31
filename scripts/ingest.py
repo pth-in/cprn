@@ -312,6 +312,11 @@ def fetch_and_ingest():
             pub_date_str = entry_data.get("published", datetime.now().isoformat())
             incident_date = date_parser.parse(pub_date_str)
             
+            # Real-time Filter: Only 2026 or later
+            if incident_date.year < 2026:
+                print(f"Skipping historical entry ({incident_date.year}): {title[:50]}...")
+                continue
+
             # 1. Check if URL already exists anywhere
             # We can use a simple query for this since we want to avoid re-processing the same link
             existing_by_url = supabase.table("incidents").select("id").filter("sources", "cs", f'[{{"url": "{link}"}}]').execute()
