@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from supabase import create_client, Client
 from dateutil import parser as date_parser
 from thefuzz import fuzz
-import google.generativeai as genai
+from google import genai
 
 # Configuration
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
@@ -15,8 +15,9 @@ SUPABASE_KEY = os.environ.get("SUPABASE_SECRET_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 # Configure Gemini
+client = None
 if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+    client = genai.Client(api_key=GEMINI_API_KEY)
 
 # Working Nitter Mirrors (Fallbacks)
 NITTER_MIRRORS = [
@@ -87,13 +88,12 @@ def init_supabase() -> Client:
 
 def summarize_incident(title, description):
     """Generates a concise 10-line summary using Gemini AI."""
-    if not GEMINI_API_KEY:
+    if not client:
         # Fallback: Simple extractive summary (first 3 sentences)
         sentences = description.split('.')[:3]
         return ". ".join(sentences) + "." if sentences else description
 
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
         prompt = f"""
         Summarize the following Christian persecution incident in India in exactly 10 short, bulleted lines. 
         Focus on: What happened, Who was involved, Where, and Current status.
@@ -101,7 +101,10 @@ def summarize_incident(title, description):
         Title: {title}
         Full Report: {description}
         """
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=prompt
+        )
         return response.text
     except Exception as e:
         print(f"Gemini Error: {e}")
