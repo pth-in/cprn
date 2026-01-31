@@ -20,6 +20,17 @@ FEEDS = [
     {"name": "AsiaNews", "url": "https://www.asianews.it/index.php?l=en&art=1&size=0"}
 ]
 
+# Social Media Sentinels (X/Twitter Handles)
+SOCIAL_SENTINELS = ["UCFHR", "EFI_RLC", "persecution_in"]
+
+# Working Nitter Mirrors (Fallbacks)
+NITTER_MIRRORS = [
+    "https://nitter.poast.org",
+    "https://nitter.privacydev.net",
+    "https://xcancel.com",
+    "https://nitter.cz"
+]
+
 # Contextual keywords to ensure relevance for broader sources (Must be Christian Context)
 CONTEXT_KEYWORDS = [
     "persecution", "attack", "arrest", "arrested", "vandal", "vandalized", 
@@ -32,6 +43,37 @@ CONTEXT_KEYWORDS = [
 
 def init_supabase() -> Client:
     return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+def fetch_social_sentinels():
+    """Fetches updates from X sentinels using Nitter mirrors."""
+    entries = []
+    for handle in SOCIAL_SENTINELS:
+        success = False
+        for mirror in NITTER_MIRRORS:
+            rss_url = f"{mirror}/{handle}/rss"
+            print(f"Trying social feed: {rss_url}")
+            try:
+                # Use a small timeout to skip slow mirrors quickly
+                response = requests.get(rss_url, timeout=5)
+                if response.status_code == 200:
+                    feed = feedparser.parse(response.text)
+                    if feed.entries:
+                        print(f"Successfully fetched {len(feed.entries)} posts from @{handle} via {mirror}")
+                        for entry in feed.entries:
+                            entries.append({
+                                "title": f"Social Update: {entry.title[:100]}...",
+                                "link": entry.link,
+                                "description": entry.get("summary", entry.get("description", "")),
+                                "published": entry.get("published", datetime.now().isoformat()),
+                                "source_name": f"X (@{handle})"
+                            })
+                        success = True
+                        break
+            except Exception as e:
+                continue # Try next mirror
+        if not success:
+            print(f"Warning: Could not fetch @{handle} from any mirror.")
+    return entries
 
 def scrape_efi_news():
     """Scrapes the latest news from EFI website."""
@@ -107,6 +149,10 @@ def fetch_and_ingest():
     efi_entries = scrape_efi_news()
     all_raw_entries.extend(efi_entries)
     
+    # 3. Fetch Social Sentinels
+    social_entries = fetch_social_sentinels()
+    all_raw_entries.extend(social_entries)
+    
     for entry_data in all_raw_entries:
         try:
             title = clean_title(entry_data['title'])
@@ -118,11 +164,10 @@ def fetch_and_ingest():
                 if not "india" in full_text:
                     continue
                 
-                # Check for persecution context
                 if not any(kw in full_text for kw in CONTEXT_KEYWORDS):
                     continue
 
-                pub_date_str = entry.get("published", entry.get("updated", datetime.now().isoformat()))
+                pub_date_str = entry_data.get("published", datetime.now().isoformat())
                 incident_date = date_parser.parse(pub_date_str)
                 
                 # 1. Check if URL already exists anywhere

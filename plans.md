@@ -28,9 +28,15 @@ To avoid cluttering the feed when multiple sources report the same event:
     - Higher Credibility (Shows multiple sources for one event).
     - Richer Data (Combined descriptions).
 
-### Priority 3: Local Networks & Crowdsourcing
+### Priority 3: Social Media Sentinels (Zero-Cost Proactive Monitoring)
+To catch incidents before they hit the major news wires, we monitor high-frequency "Sentinel" accounts on X (Twitter) and Facebook:
+- **X Sentinels**: `@UCF_India`, `@persecution_in` (Persecution Relief), `@EFI_India`, `@ADFIndia`.
+- **Facebook Sentinels**: `United Christian Forum (UCF)`, `Evangelical Fellowship of India`.
+- **Implementation**: Instead of the paid X API, we use RSS-proxies (Nitter/RSS-Bridge) to convert these timelines into automated data streams.
+
+### Priority 4: Local Networks & Crowdsourcing
 - **Direct Submissions**: A future secure form for verified partners to submit reports.
-- **Social Media Sentinel**: Monitoring specific hashtags or accounts (requires careful filtering).
+- **VPN & Encrypted Tools**: Providing tools and training for those in high-risk areas to communicate safely.
 
 ---
 
