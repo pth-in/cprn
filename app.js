@@ -1,12 +1,9 @@
 const { useState, useEffect, useCallback, useRef } = React;
 
-// --- Supabase Config ---
-// Since this is a static frontend on GitHub Pages, the URL and Anon Key are public.
-// Replace these with your actual Supabase credentials.
 const SUPABASE_URL = "https://tvbmjectzcowsjzidumg.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_NFMG2axuLqnH2AbPUjR7OA_L70ojzSM";
 
-const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const App = () => {
     const [incidents, setIncidents] = useState([]);
@@ -16,16 +13,31 @@ const App = () => {
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedIncident, setSelectedIncident] = useState(null);
     const [initialSync, setInitialSync] = useState(false);
+    const [theme, setTheme] = useState(localStorage.getItem('cprn-theme') || 'light');
 
     const PAGE_SIZE = 12;
 
-    // Fetch Incidents from Supabase
+    // --- Helper: Strip HTML ---
+    const stripHtml = (html) => {
+        let doc = new Error().stack ? new DOMParser().parseFromString(html, 'text/html') : null;
+        return doc ? doc.body.textContent || "" : html.replace(/<[^>]*>?/gm, '');
+    };
+
+    // --- Theme Toggle ---
+    useEffect(() => {
+        document.body.setAttribute('data-theme', theme);
+        localStorage.setItem('cprn-theme', theme);
+    }, [theme]);
+
+    const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
+
+    // --- Supabase Interaction ---
     const fetchIncidents = useCallback(async (isNewSearch = false) => {
         setLoading(true);
         const start = isNewSearch ? 0 : page * PAGE_SIZE;
         const end = start + PAGE_SIZE - 1;
 
-        let query = supabase
+        let query = supabaseClient
             .from('incidents')
             .select('*', { count: 'exact' })
             .order('incident_date', { ascending: false })
@@ -41,7 +53,7 @@ const App = () => {
             console.error("Fetch Error:", error);
         } else {
             setIncidents(prev => isNewSearch ? data : [...prev, ...data]);
-            setHasMore(incidents.length + data.length < count);
+            setHasMore(incidents.length + data.length < (count || 0));
             setInitialSync(true);
         }
         setLoading(false);
@@ -55,14 +67,14 @@ const App = () => {
         if (page > 0) fetchIncidents();
     }, [page]);
 
-    // Infinite Scroll Observer
+    // Intersection Observer for Infinite Scroll
     const observer = useRef();
     const lastIncidentRef = useCallback(node => {
         if (loading) return;
         if (observer.current) observer.current.disconnect();
         observer.current = new IntersectionObserver(entries => {
             if (entries[0].isIntersecting && hasMore) {
-                setPage(prevPage => prevPage + 1);
+                setPage(prev => prev + 1);
             }
         });
         if (node) observer.current.observe(node);
@@ -78,7 +90,7 @@ const App = () => {
         return (
             <div className="initial-loader">
                 <div className="spinner"></div>
-                <p>Establishing Secure Connection...</p>
+                <p>Loading CPRN Mission Control...</p>
             </div>
         );
     }
@@ -86,12 +98,16 @@ const App = () => {
     return (
         <div className="app-container">
             <header className="main-header">
-                <a href="#" className="logo">
-                    <div className="logo-icon"><i data-lucide="shield-check"></i></div>
+                <div className="logo">
                     <span className="logo-text">CPRN<span className="logo-accent">.</span></span>
-                </a>
-                <div className="stats" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    {incidents.length} Incident{incidents.length !== 1 ? 's' : ''} Documented
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                    <div className="stats" style={{ fontSize: '0.8rem', opacity: 0.6 }}>
+                        {incidents.length} Reports Found
+                    </div>
+                    <button className="theme-toggle" onClick={toggleTheme} aria-label="Toggle Theme">
+                        <i data-lucide={theme === 'light' ? "moon" : "sun"}></i>
+                    </button>
                 </div>
             </header>
 
@@ -100,7 +116,7 @@ const App = () => {
                 <input
                     type="text"
                     className="search-input"
-                    placeholder="Search by location, names, or incident keywords..."
+                    placeholder="Search incidents or locations..."
                     value={searchQuery}
                     onChange={(e) => {
                         setSearchQuery(e.target.value);
@@ -111,13 +127,11 @@ const App = () => {
 
             <main className="incident-grid">
                 {incidents.map((incident, index) => {
-                    const isLastElement = incidents.length === index + 1;
+                    const isLast = incidents.length === index + 1;
+                    const cleanDesc = stripHtml(incident.description);
+
                     return (
-                        <div
-                            key={incident.id}
-                            className="card"
-                            ref={isLastElement ? lastIncidentRef : null}
-                        >
+                        <div key={incident.id} className="card" ref={isLast ? lastIncidentRef : null}>
                             <div className="card-header">
                                 <span className="date-badge">{formatDate(incident.incident_date)}</span>
                                 <div className="source-badges">
@@ -134,17 +148,12 @@ const App = () => {
                                 {incident.location_raw}
                             </div>
 
-                            <p className="card-description">{incident.description}</p>
+                            <p className="card-description">{cleanDesc}</p>
 
                             <div className="card-footer">
                                 <button className="btn-read-more" onClick={() => setSelectedIncident(incident)}>
-                                    Details & Research
+                                    Details & Analysis
                                 </button>
-                                {incident.is_verified && (
-                                    <div title="Verified Incident" style={{ color: 'var(--accent-gold)' }}>
-                                        <i data-lucide="verified" style={{ width: '20px' }}></i>
-                                    </div>
-                                )}
                             </div>
                         </div>
                     );
@@ -159,43 +168,33 @@ const App = () => {
 
             {!hasMore && incidents.length > 0 && (
                 <div className="scroll-trigger">
-                    <p style={{ color: 'var(--text-muted)' }}>You have reached the end of the stream.</p>
+                    <p style={{ opacity: 0.5, fontSize: '0.9rem' }}>No further reports found.</p>
                 </div>
             )}
 
-            {/* Incident Details Modal */}
+            {/* Modal */}
             {selectedIncident && (
                 <div className="modal-overlay" onClick={() => setSelectedIncident(null)}>
                     <div className="modal-content" onClick={e => e.stopPropagation()}>
-                        <button className="close-btn" onClick={() => setSelectedIncident(null)}>
-                            <i data-lucide="x"></i>
-                        </button>
-
                         <div style={{ marginBottom: '2rem' }}>
-                            <span className="date-badge" style={{ marginBottom: '1rem', display: 'inline-block' }}>
-                                {formatDate(selectedIncident.incident_date)}
-                            </span>
-                            <h1 className="card-title" style={{ fontSize: '2rem', marginBottom: '1rem' }}>
-                                {selectedIncident.title}
-                            </h1>
+                            <div className="date-badge" style={{ marginBottom: '0.5rem' }}>{formatDate(selectedIncident.incident_date)}</div>
+                            <h1 className="card-title" style={{ fontSize: '1.8rem', marginBottom: '1rem' }}>{selectedIncident.title}</h1>
                             <div className="location-tag" style={{ fontSize: '1rem' }}>
-                                <i data-lucide="map-pin" className="location-icon" style={{ width: '18px' }}></i>
-                                {selectedIncident.location_raw}
+                                <i data-lucide="map-pin" className="location-icon"></i> {selectedIncident.location_raw}
                             </div>
                         </div>
 
-                        <div className="modal-body">
-                            <h3 style={{ color: 'var(--accent-gold)', marginBottom: '1rem', size: '0.9rem', textTransform: 'uppercase' }}>Incident Narrative</h3>
-                            <p style={{ whiteSpace: 'pre-wrap', marginBottom: '2rem', color: 'var(--text-primary)' }}>
-                                {selectedIncident.description}
+                        <div style={{ lineHeight: 1.8 }}>
+                            <p style={{ whiteSpace: 'pre-wrap', marginBottom: '2rem' }}>
+                                {stripHtml(selectedIncident.description)}
                             </p>
 
-                            <h3 style={{ color: 'var(--accent-gold)', marginBottom: '1rem', size: '0.9rem', textTransform: 'uppercase' }}>Original Sources</h3>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                            <h4 style={{ marginBottom: '1rem', color: 'var(--accent-gold)' }}>Verified Reporting Sources:</h4>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
                                 {selectedIncident.sources.map((s, i) => (
-                                    <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" className="badge" style={{ display: 'block', padding: '1rem', textDecoration: 'none' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <strong>{s.name}</strong>
+                                    <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" className="badge" style={{ display: 'block', padding: '1rem', textAlign: 'left', textDecoration: 'none' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <span>Access Original Report from <strong>{s.name}</strong></span>
                                             <i data-lucide="external-link" style={{ width: '16px' }}></i>
                                         </div>
                                     </a>
@@ -209,17 +208,10 @@ const App = () => {
     );
 };
 
-// Initialize Lucide Icons after React Renders
-const render = () => {
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<App />);
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
 
-    // Lucide helper
-    setTimeout(() => {
-        if (window.lucide) {
-            window.lucide.createIcons();
-        }
-    }, 100);
-};
-
-render();
+// Refresh Icons
+setInterval(() => {
+    if (window.lucide) window.lucide.createIcons();
+}, 200);
