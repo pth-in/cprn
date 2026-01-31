@@ -8,10 +8,20 @@ SUPABASE_KEY = os.environ.get("SUPABASE_SECRET_KEY")
 
 def setup_admin():
     if not SUPABASE_URL or not SUPABASE_KEY:
-        print("Error: Supabase credentials missing (SUPABASE_URL, SUPABASE_SECRET_KEY).")
+        print(f"Error: Supabase credentials missing.")
+        print(f"DEBUG: URL present: {bool(SUPABASE_URL)}, Key present: {bool(SUPABASE_KEY)}")
         return
 
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    # Basic Key Validation Print (Secure)
+    print(f"DEBUG: URL starts with: {SUPABASE_URL[:10]}...")
+    print(f"DEBUG: Key length: {len(SUPABASE_KEY)}")
+    print(f"DEBUG: Key starts with: {SUPABASE_KEY[:10]}...")
+
+    try:
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    except Exception as e:
+        print(f"DEBUG: Failed to initialize Supabase client: {str(e)}")
+        raise
     
     # 1. Create Admin User
     admin_username = os.environ.get("ADMIN_USERNAME", "admin")
