@@ -4,11 +4,11 @@ from supabase import create_client, Client
 
 # Configuration
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+SUPABASE_KEY = os.environ.get("SUPABASE_SECRET_KEY")
 
 def setup_admin():
     if not SUPABASE_URL or not SUPABASE_KEY:
-        print("Error: Supabase credentials missing (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY).")
+        print("Error: Supabase credentials missing (SUPABASE_URL, SUPABASE_SECRET_KEY).")
         return
 
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)

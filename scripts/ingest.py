@@ -10,7 +10,7 @@ from thefuzz import fuzz
 
 # Configuration
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+SUPABASE_KEY = os.environ.get("SUPABASE_SECRET_KEY")
 
 # Working Nitter Mirrors (Fallbacks)
 NITTER_MIRRORS = [
