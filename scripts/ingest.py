@@ -53,14 +53,27 @@ INDIAN_LOCATIONS = {
     "Delhi": ["delhi", "new delhi"]
 }
 
-# Contextual keywords to ensure relevance for broader sources (Must be Christian Context)
-CONTEXT_KEYWORDS = [
-    "persecution", "attack", "arrest", "arrested", "vandal", "vandalized", 
+# Strict Identity Keywords (Must be Christian Context)
+IDENTITY_KEYWORDS = [
+    "pastor", "priest", "church", "christian", "believer", "worship", "ministry",
+    "parish", "nun", "bishop", "prayer meeting", "believers", "missionary", "jesuit"
+]
+
+# Action/Persecution Keywords (Must indicate an incident)
+PERSECUTION_KEYWORDS = [
+    "persecution", "attack", "arrest", "vandal", "vandalized", 
     "killed", "beaten", "mob", "threaten", "violence", "prison", "jail", 
     "police", "investigate", "court", "law", "conversion", "anti-conversion",
     "burned", "destroyed", "forced", "torture", "harassed", "beating",
-    "pastor", "priest", "church", "christian", "believer", "worship", "ministry",
-    "parish", "nun", "bishop", "prayer meeting"
+    "demolish", "demolition", "threat", "assault", "raided", "stopped",
+    "interrupted", "disrupted", "forbidden", "discrimination"
+]
+
+# Negative Keywords (Discard if these are present in a "general" context)
+NEGATIVE_KEYWORDS = [
+    "obituary", "dies at", "passed away", "pension", "birthday", "celebrate",
+    "anniversary", "promotion", "appointment", "award", "congratulates",
+    "dry day", "tribute", "legacy", "historical", "festival"
 ]
 
 def init_supabase() -> Client:
@@ -244,13 +257,25 @@ def fetch_and_ingest():
             # Image URL from source
             image_url = entry_data.get('image_url')
                 
-            # India + Persecution Context Filter
-            full_text = f"{title} {description}".lower()
+            # India?
             if not "india" in full_text:
                 continue
             
-            if not any(kw in full_text for kw in CONTEXT_KEYWORDS):
-                continue
+            # 1. Identity Check (Who?)
+            has_identity = any(kw in full_text for kw in IDENTITY_KEYWORDS)
+            
+            # 2. Persecution Check (What happened?)
+            has_persecution = any(kw in full_text for kw in PERSECUTION_KEYWORDS)
+            
+            # 3. Negative Check (Is it just general news?)
+            has_negative = any(kw in full_text for kw in NEGATIVE_KEYWORDS)
+
+            if not (has_identity and has_persecution) or has_negative:
+                # Extra check: if it's from a known persecution-only source like EFI, be a bit more lenient
+                if entry_data['source_name'] == "Evangelical Fellowship of India" and (has_identity or has_persecution):
+                    pass # Keep it
+                else:
+                    continue
 
             pub_date_str = entry_data.get("published", datetime.now().isoformat())
             incident_date = date_parser.parse(pub_date_str)
