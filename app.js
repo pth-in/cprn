@@ -132,6 +132,11 @@ const App = () => {
 
                     return (
                         <div key={incident.id} className="card" ref={isLast ? lastIncidentRef : null}>
+                            {incident.image_url && (
+                                <div className="card-image-wrapper">
+                                    <img src={incident.image_url} alt={incident.title} className="card-image" loading="lazy" />
+                                </div>
+                            )}
                             <div className="card-header">
                                 <span className="date-badge">{formatDate(incident.incident_date)}</span>
                                 <div className="source-badges">

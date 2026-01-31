@@ -113,12 +113,24 @@ def fetch_social_sentinels():
                     if feed.entries:
                         print(f"Successfully fetched {len(feed.entries)} posts from @{handle} via {mirror}")
                         for entry in feed.entries:
+                            # Try to find image in entry (Nitter often puts it in the description as an <img> tag)
+                            image_url = None
+                            if "summary" in entry:
+                                soup = BeautifulSoup(entry.summary, 'html.parser')
+                                img = soup.find('img')
+                                if img:
+                                    image_url = img.get('src')
+                                    # Handle relative URLs if necessary
+                                    if image_url and image_url.startswith('/'):
+                                        image_url = f"{mirror}{image_url}"
+
                             entries.append({
                                 "title": f"Social Update: {entry.title[:100]}...",
                                 "link": entry.link,
                                 "description": entry.get("summary", entry.get("description", "")),
                                 "published": entry.get("published", datetime.now().isoformat()),
-                                "source_name": f"X (@{handle})"
+                                "source_name": f"X (@{handle})",
+                                "image_url": image_url
                             })
                         success = True
                         break
@@ -150,6 +162,12 @@ def scrape_efi_news():
             title = link_tag.get_text(strip=True)
             link = link_tag['href']
             
+            # Try to find image
+            image_url = None
+            img_tag = article.find('img')
+            if img_tag:
+                image_url = img_tag.get('src')
+            
             # Try to find date
             date_tag = article.find('time')
             date_str = date_tag.get_text(strip=True) if date_tag else datetime.now().isoformat()
@@ -163,7 +181,8 @@ def scrape_efi_news():
                 "link": link,
                 "description": description,
                 "published": date_str,
-                "source_name": "Evangelical Fellowship of India"
+                "source_name": "Evangelical Fellowship of India",
+                "image_url": image_url
             })
         return entries
     except Exception as e:
@@ -190,12 +209,23 @@ def fetch_and_ingest():
         print(f"Fetching RSS: {feed_info['name']}")
         feed = feedparser.parse(feed_info['url'])
         for entry in feed.entries:
+            # Try to find image URL in RSS extensions
+            image_url = None
+            # Common RSS image tags
+            if hasattr(entry, 'media_content'):
+                image_url = entry.media_content[0].get('url')
+            elif hasattr(entry, 'links'):
+                for l in entry.links:
+                    if l.get('rel') == 'enclosure' and 'image' in l.get('type', ''):
+                        image_url = l.get('href')
+            
             all_raw_entries.append({
                 "title": entry.title,
                 "link": entry.link,
                 "description": entry.get("summary", entry.get("description", "")),
                 "published": entry.get("published", entry.get("updated", datetime.now().isoformat())),
-                "source_name": feed_info['name']
+                "source_name": feed_info['name'],
+                "image_url": image_url
             })
             
     # 2. Fetch NGO Scraped Data
@@ -215,6 +245,9 @@ def fetch_and_ingest():
             
             # Extract specific location
             location = extract_location(title, description)
+            
+            # Image URL from source
+            image_url = entry_data.get('image_url')
                 
             # India + Persecution Context Filter
             full_text = f"{title} {description}".lower()
@@ -246,7 +279,12 @@ def fetch_and_ingest():
                     updated_sources = existing['sources']
                     updated_sources.append({"name": entry_data['source_name'], "url": link})
                     
-                    supabase.table("incidents").update({"sources": updated_sources}).eq("id", existing['id']).execute()
+                    # Update image if existing doesn't have one
+                    update_data = {"sources": updated_sources}
+                    if not existing.get('image_url') and image_url:
+                        update_data['image_url'] = image_url
+                        
+                    supabase.table("incidents").update(update_data).eq("id", existing['id']).execute()
                     print(f"Grouped (Similarity {similarity}%): {title[:50]} with existing incident.")
                     match_found = True
                     break
@@ -259,7 +297,8 @@ def fetch_and_ingest():
                     "description": description,
                     "location_raw": location,
                     "sources": [{"name": entry_data['source_name'], "url": link}],
-                    "is_verified": False
+                    "is_verified": False,
+                    "image_url": image_url
                 }
                 supabase.table("incidents").insert(data).execute()
                 print(f"Ingested New ({location}): {title[:50]}...")
