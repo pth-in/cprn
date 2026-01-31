@@ -1,0 +1,11 @@
+# CPRN Project Ignore
+node_modules/
+.env
+__pycache__/
+*.pyc
+
+# Project Plans & Brain Artifacts
+plans.md
+.gemini/
+.agent/
+brain/
