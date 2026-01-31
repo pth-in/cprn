@@ -15,7 +15,46 @@ const App = () => {
     const [initialSync, setInitialSync] = useState(false);
     const [theme, setTheme] = useState(localStorage.getItem('cprn-theme') || 'light');
 
+    // --- Admin State ---
+    const [isLoggedIn, setIsLoggedIn] = useState(localStorage.getItem('cprn-logged-in') === 'true');
+    const [adminView, setAdminView] = useState('none'); // 'none', 'sources', 'incidents', 'users'
+    const [loginError, setLoginError] = useState("");
+
     const PAGE_SIZE = 12;
+
+    // --- Hash Utility (matching setup_admin.py) ---
+    async function sha256(message) {
+        const msgBuffer = new TextEncoder().encode(message);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    // --- Auth Handlers ---
+    const handleLogin = async (username, password) => {
+        const hash = await sha256(password);
+        const { data, error } = await supabaseClient
+            .from('dashboard_users')
+            .select('*')
+            .eq('username', username)
+            .eq('password_hash', hash)
+            .single();
+
+        if (data) {
+            setIsLoggedIn(true);
+            localStorage.setItem('cprn-logged-in', 'true');
+            setLoginError("");
+            setAdminView('sources');
+        } else {
+            setLoginError("Invalid credentials.");
+        }
+    };
+
+    const handleLogout = () => {
+        setIsLoggedIn(false);
+        localStorage.removeItem('cprn-logged-in');
+        setAdminView('none');
+    };
 
     // --- Helper: Strip HTML ---
     const stripHtml = (html) => {
@@ -86,6 +125,265 @@ const App = () => {
         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     };
 
+    // --- Sub-components for Admin ---
+    const AdminSources = () => {
+        const [sources, setSources] = useState([]);
+        const [newSource, setNewSource] = useState({ name: '', url_or_handle: '', source_type: 'rss' });
+
+        const fetchSources = async () => {
+            const { data } = await supabaseClient.from('crawler_sources').select('*').order('name');
+            setSources(data);
+        };
+
+        useEffect(() => { fetchSources(); }, []);
+
+        const toggleSource = async (id, currentStatus) => {
+            await supabaseClient.from('crawler_sources').update({ is_active: !currentStatus }).eq('id', id);
+            fetchSources();
+        };
+
+        const deleteSource = async (id) => {
+            if (confirm("Delete this source?")) {
+                await supabaseClient.from('crawler_sources').delete().eq('id', id);
+                fetchSources();
+            }
+        };
+
+        const addSource = async () => {
+            await supabaseClient.from('crawler_sources').insert([newSource]);
+            setNewSource({ name: '', url_or_handle: '', source_type: 'rss' });
+            fetchSources();
+        };
+
+        return (
+            <div>
+                <h3>Configure Data Sources</h3>
+                <div className="admin-table-container">
+                    <table className="admin-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>URL / Handle</th>
+                                <th>Active</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {sources.map(s => (
+                                <tr key={s.id}>
+                                    <td>{s.name}</td>
+                                    <td><span className="badge">{s.source_type}</span></td>
+                                    <td>{s.url_or_handle}</td>
+                                    <td>
+                                        <input type="checkbox" checked={s.is_active} onChange={() => toggleSource(s.id, s.is_active)} />
+                                    </td>
+                                    <td>
+                                        <button className="btn-icon" onClick={() => deleteSource(s.id)}>
+                                            <i data-lucide="trash-2"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+                <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
+                    <h4>Add New Source</h4>
+                    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                        <input className="form-input" style={{ flex: 1 }} placeholder="Name (e.g. AsiaNews)" value={newSource.name} onChange={e => setNewSource({ ...newSource, name: e.target.value })} />
+                        <input className="form-input" style={{ flex: 2 }} placeholder="URL or X Handle" value={newSource.url_or_handle} onChange={e => setNewSource({ ...newSource, url_or_handle: e.target.value })} />
+                        <select className="form-input" style={{ flex: 1 }} value={newSource.source_type} onChange={e => setNewSource({ ...newSource, source_type: e.target.value })}>
+                            <option value="rss">RSS Feed</option>
+                            <option value="social">X (Twitter) Handle</option>
+                        </select>
+                        <button className="btn-action" onClick={addSource}>Add Source</button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const AdminIncidents = () => {
+        const [showAddForm, setShowAddForm] = useState(false);
+        const [newInc, setNewInc] = useState({
+            title: '',
+            description: '',
+            location_raw: 'India',
+            incident_date: new Date().toISOString().split('T')[0],
+            sources: []
+        });
+
+        const deleteIncident = async (id) => {
+            if (confirm("Permanent delete?")) {
+                await supabaseClient.from('incidents').delete().eq('id', id);
+                fetchIncidents(true);
+            }
+        };
+
+        const addIncident = async () => {
+            const data = {
+                ...newInc,
+                is_verified: true,
+                sources: [{ name: 'Manual Entry', url: '#' }]
+            };
+            await supabaseClient.from('incidents').insert([data]);
+            setNewInc({ title: '', description: '', location_raw: 'India', incident_date: new Date().toISOString().split('T')[0], sources: [] });
+            setShowAddForm(false);
+            fetchIncidents(true);
+        };
+
+        return (
+            <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                    <h3>Manage Incidents</h3>
+                    <button className="btn-read-more" onClick={() => setShowAddForm(!showAddForm)}>
+                        {showAddForm ? 'Cancel' : 'Add Manual Report'}
+                    </button>
+                </div>
+
+                {showAddForm && (
+                    <div style={{ background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '12px', marginBottom: '2rem', border: '1px solid var(--accent-gold)' }}>
+                        <h4>New Incident Report</h4>
+                        <div className="form-group">
+                            <label className="form-label">Title</label>
+                            <input className="form-input" value={newInc.title} onChange={e => setNewInc({ ...newInc, title: e.target.value })} />
+                        </div>
+                        <div style={{ display: 'flex', gap: '1rem' }}>
+                            <div className="form-group" style={{ flex: 1 }}>
+                                <label className="form-label">Location (State/City)</label>
+                                <input className="form-input" value={newInc.location_raw} onChange={e => setNewInc({ ...newInc, location_raw: e.target.value })} />
+                            </div>
+                            <div className="form-group" style={{ flex: 1 }}>
+                                <label className="form-label">Incident Date</label>
+                                <input className="form-input" type="date" value={newInc.incident_date} onChange={e => setNewInc({ ...newInc, incident_date: e.target.value })} />
+                            </div>
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">Description</label>
+                            <textarea className="form-input" style={{ minHeight: '150px' }} value={newInc.description} onChange={e => setNewInc({ ...newInc, description: e.target.value })}></textarea>
+                        </div>
+                        <button className="btn-read-more" onClick={addIncident}>Publish Report</button>
+                    </div>
+                )}
+
+                <div className="admin-table-container">
+                    <table className="admin-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Title</th>
+                                <th>Location</th>
+                                <th>Verified</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {incidents.map(inc => (
+                                <tr key={inc.id}>
+                                    <td>{formatDate(inc.incident_date)}</td>
+                                    <td>{inc.title.substring(0, 50)}...</td>
+                                    <td>{inc.location_raw}</td>
+                                    <td>{inc.is_verified ? '✅' : '⏳'}</td>
+                                    <td>
+                                        <button className="btn-icon" onClick={() => deleteIncident(inc.id)}>
+                                            <i data-lucide="trash-2"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
+    };
+
+    const AdminUsers = () => {
+        const [users, setUsers] = useState([]);
+        const [newUser, setNewUser] = useState({ username: '', password: '' });
+
+        const fetchUsers = async () => {
+            const { data } = await supabaseClient.from('dashboard_users').select('id, username, created_at');
+            setUsers(data);
+        };
+
+        useEffect(() => { fetchUsers(); }, []);
+
+        const addUser = async () => {
+            const hash = await sha256(newUser.password);
+            await supabaseClient.from('dashboard_users').insert([{ username: newUser.username, password_hash: hash }]);
+            setNewUser({ username: '', password: '' });
+            fetchUsers();
+        };
+
+        return (
+            <div>
+                <h3>Authenticated Users</h3>
+                <div className="admin-table-container">
+                    <table className="admin-table">
+                        <thead>
+                            <tr>
+                                <th>Username</th>
+                                <th>Joined</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {users.map(u => (
+                                <tr key={u.id}>
+                                    <td>{u.username}</td>
+                                    <td>{formatDate(u.created_at)}</td>
+                                    <td>
+                                        {u.username !== 'admin' && (
+                                            <button className="btn-icon" onClick={async () => {
+                                                if (confirm("Remove user?")) {
+                                                    await supabaseClient.from('dashboard_users').delete().eq('id', u.id);
+                                                    fetchUsers();
+                                                }
+                                            }}>
+                                                <i data-lucide="user-minus"></i>
+                                            </button>
+                                        )}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+                <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '8px', marginTop: '1rem' }}>
+                    <h4>Add Operator</h4>
+                    <div style={{ display: 'flex', gap: '1rem' }}>
+                        <input className="form-input" placeholder="Username" value={newUser.username} onChange={e => setNewUser({ ...newUser, username: e.target.value })} />
+                        <input className="form-input" type="password" placeholder="Password" value={newUser.password} onChange={e => setNewUser({ ...newUser, password: e.target.value })} />
+                        <button className="btn-action" onClick={addUser}>Create User</button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const Login = () => {
+        const [u, setU] = useState("");
+        const [p, setP] = useState("");
+        return (
+            <div className="login-container">
+                <h2 style={{ marginBottom: '1.5rem', textAlign: 'center' }}>Mission Control Login</h2>
+                {loginError && <p style={{ color: 'var(--accent-red)', fontSize: '0.8rem', marginBottom: '1rem' }}>{loginError}</p>}
+                <div className="form-group">
+                    <label className="form-label">Username</label>
+                    <input className="form-input" value={u} onChange={e => setU(e.target.value)} />
+                </div>
+                <div className="form-group">
+                    <label className="form-label">Password</label>
+                    <input className="form-input" type="password" value={p} onChange={e => setP(e.target.value)} />
+                </div>
+                <button className="btn-read-more" style={{ width: '100%' }} onClick={() => handleLogin(u, p)}>Access Dashboard</button>
+                <button className="btn-action" style={{ width: '100%', marginTop: '0.5rem', border: 'none' }} onClick={() => setAdminView('none')}>Back to Portal</button>
+            </div>
+        );
+    };
+
     if (!initialSync) {
         return (
             <div className="initial-loader">
@@ -95,75 +393,120 @@ const App = () => {
         );
     }
 
+    if (adminView !== 'none' && !isLoggedIn) {
+        return <Login />;
+    }
+
     return (
         <div className="app-container">
             <header className="main-header">
-                <div className="logo">
+                <div className="logo" onClick={() => setAdminView('none')} style={{ cursor: 'pointer' }}>
                     <span className="logo-text">CPRN<span className="logo-accent">.</span></span>
+                    {adminView !== 'none' && <span className="badge" style={{ marginLeft: '1rem', background: 'var(--accent-red)', color: 'white' }}>Mission Control</span>}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-                    <div className="stats" style={{ fontSize: '0.8rem', opacity: 0.6 }}>
-                        {incidents.length} Reports Found
-                    </div>
+                    {isLoggedIn && adminView === 'none' && (
+                        <button className="btn-action" onClick={() => setAdminView('sources')}>
+                            <i data-lucide="layout-dashboard" style={{ width: '16px', marginRight: '0.5rem' }}></i>
+                            Dashboard
+                        </button>
+                    )}
+                    {isLoggedIn && adminView !== 'none' && (
+                        <button className="btn-action" style={{ border: 'none', color: 'var(--accent-red)' }} onClick={handleLogout}>
+                            Logout
+                        </button>
+                    )}
+                    {!isLoggedIn && adminView === 'none' && (
+                        <button className="btn-icon" onClick={() => setAdminView('login')} title="Operator Login">
+                            <i data-lucide="lock" style={{ width: '16px' }}></i>
+                        </button>
+                    )}
                     <button className="theme-toggle" onClick={toggleTheme} aria-label="Toggle Theme">
                         <i data-lucide={theme === 'light' ? "moon" : "sun"}></i>
                     </button>
                 </div>
             </header>
 
-            <div className="search-wrapper">
-                <i data-lucide="search" className="search-icon"></i>
-                <input
-                    type="text"
-                    className="search-input"
-                    placeholder="Search incidents or locations..."
-                    value={searchQuery}
-                    onChange={(e) => {
-                        setSearchQuery(e.target.value);
-                        setPage(0);
-                    }}
-                />
-            </div>
+            {adminView === 'none' ? (
+                <>
+                    <div className="search-wrapper">
+                        <i data-lucide="search" className="search-icon"></i>
+                        <input
+                            type="text"
+                            className="search-input"
+                            placeholder="Search incidents or locations..."
+                            value={searchQuery}
+                            onChange={(e) => {
+                                setSearchQuery(e.target.value);
+                                setPage(0);
+                            }}
+                        />
+                    </div>
 
-            <main className="incident-grid">
-                {incidents.map((incident, index) => {
-                    const isLast = incidents.length === index + 1;
-                    const cleanDesc = stripHtml(incident.description);
+                    <main className="incident-grid">
+                        {incidents.map((incident, index) => {
+                            const isLast = incidents.length === index + 1;
+                            const cleanDesc = stripHtml(incident.description);
 
-                    return (
-                        <div key={incident.id} className="card" ref={isLast ? lastIncidentRef : null}>
-                            {incident.image_url && (
-                                <div className="card-image-wrapper">
-                                    <img src={incident.image_url} alt={incident.title} className="card-image" loading="lazy" />
+                            return (
+                                <div key={incident.id} className="card" ref={isLast ? lastIncidentRef : null}>
+                                    {incident.image_url && (
+                                        <div className="card-image-wrapper">
+                                            <img src={incident.image_url} alt={incident.title} className="card-image" loading="lazy" />
+                                        </div>
+                                    )}
+                                    <div className="card-header">
+                                        <span className="date-badge">{formatDate(incident.incident_date)}</span>
+                                        <div className="source-badges">
+                                            {incident.sources.map((s, i) => (
+                                                <span key={i} className="badge">{s.name}</span>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <h2 className="card-title">{incident.title}</h2>
+
+                                    <div className="location-tag">
+                                        <i data-lucide="map-pin" className="location-icon"></i>
+                                        {incident.location_raw}
+                                    </div>
+
+                                    <p className="card-description">{cleanDesc}</p>
+
+                                    <div className="card-footer">
+                                        <button className="btn-read-more" onClick={() => setSelectedIncident(incident)}>
+                                            Details & Analysis
+                                        </button>
+                                    </div>
                                 </div>
-                            )}
-                            <div className="card-header">
-                                <span className="date-badge">{formatDate(incident.incident_date)}</span>
-                                <div className="source-badges">
-                                    {incident.sources.map((s, i) => (
-                                        <span key={i} className="badge">{s.name}</span>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <h2 className="card-title">{incident.title}</h2>
-
-                            <div className="location-tag">
-                                <i data-lucide="map-pin" className="location-icon"></i>
-                                {incident.location_raw}
-                            </div>
-
-                            <p className="card-description">{cleanDesc}</p>
-
-                            <div className="card-footer">
-                                <button className="btn-read-more" onClick={() => setSelectedIncident(incident)}>
-                                    Details & Analysis
-                                </button>
-                            </div>
+                            );
+                        })}
+                    </main>
+                </>
+            ) : (
+                <div className="admin-portal">
+                    <div className="admin-nav">
+                        <div className={`nav-item ${adminView === 'sources' ? 'active' : ''}`} onClick={() => setAdminView('sources')}>
+                            <i data-lucide="refresh-ccw" style={{ width: '14px', marginRight: '0.5rem' }}></i> Sources
                         </div>
-                    );
-                })}
-            </main>
+                        <div className={`nav-item ${adminView === 'incidents' ? 'active' : ''}`} onClick={() => setAdminView('incidents')}>
+                            <i data-lucide="alert-circle" style={{ width: '14px', marginRight: '0.5rem' }}></i> Manage Reports
+                        </div>
+                        <div className={`nav-item ${adminView === 'users' ? 'active' : ''}`} onClick={() => setAdminView('users')}>
+                            <i data-lucide="users" style={{ width: '14px', marginRight: '0.5rem' }}></i> Team
+                        </div>
+                        <div className="nav-item" onClick={() => setAdminView('none')} style={{ marginLeft: 'auto' }}>
+                            View Public Portal
+                        </div>
+                    </div>
+
+                    <div className="admin-content">
+                        {adminView === 'sources' && <AdminSources />}
+                        {adminView === 'incidents' && <AdminIncidents />}
+                        {adminView === 'users' && <AdminUsers />}
+                    </div>
+                </div>
+            )}
 
             {loading && (
                 <div className="scroll-trigger">

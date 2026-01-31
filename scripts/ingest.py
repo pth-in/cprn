@@ -12,21 +12,6 @@ from thefuzz import fuzz
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
-FEEDS = [
-    {"name": "ICC", "url": "https://www.persecution.org/feed"},
-    {"name": "Morning Star News", "url": "https://morningstarnews.org/tag/religious-persecution/feed/"},
-    {"name": "Christian Today India", "url": "https://www.christiantoday.co.in/rss.xml"},
-    {"name": "UCA News", "url": "https://www.ucanews.com/rss/news"},
-    {"name": "AsiaNews", "url": "https://www.asianews.it/index.php?l=en&art=1&size=0"},
-    # Google News Targeted Searches
-    {"name": "Google News (Persecution)", "url": "https://news.google.com/rss/search?q=%22Christian+persecution%22+India&hl=en-IN&gl=IN&ceid=IN:en"},
-    {"name": "Google News (Attacks)", "url": "https://news.google.com/rss/search?q=%22Attack+on+Christians%22+India&hl=en-IN&gl=IN&ceid=IN:en"},
-    {"name": "Google News (Anti-Conversion)", "url": "https://news.google.com/rss/search?q=%22Anti-conversion+laws%22+India&hl=en-IN&gl=IN&ceid=IN:en"}
-]
-
-# Social Media Sentinels (X/Twitter Handles)
-SOCIAL_SENTINELS = ["UCFHR", "EFI_RLC", "persecution_in"]
-
 # Working Nitter Mirrors (Fallbacks)
 NITTER_MIRRORS = [
     "https://nitter.poast.org",
@@ -101,10 +86,10 @@ def extract_location(title, description):
             
     return "India" # Fallback
 
-def fetch_social_sentinels():
+def fetch_social_sentinels(handles):
     """Fetches updates from X sentinels using Nitter mirrors."""
     entries = []
-    for handle in SOCIAL_SENTINELS:
+    for handle in handles:
         success = False
         for mirror in NITTER_MIRRORS:
             rss_url = f"{mirror}/{handle}/rss"
@@ -206,12 +191,17 @@ def is_duplicate_url(supabase, url):
 def fetch_and_ingest():
     supabase = init_supabase()
     
+    # Fetch Active Sources from DB
+    sources_result = supabase.table("crawler_sources").select("*").eq("is_active", True).execute()
+    db_sources = sources_result.data
+    
     all_raw_entries = []
     
-    # 1. Fetch RSS Feeds
-    for feed_info in FEEDS:
+    # 1. Fetch RSS Feeds from DB
+    rss_sources = [s for s in db_sources if s['source_type'] == 'rss']
+    for feed_info in rss_sources:
         print(f"Fetching RSS: {feed_info['name']}")
-        feed = feedparser.parse(feed_info['url'])
+        feed = feedparser.parse(feed_info['url_or_handle'])
         for entry in feed.entries:
             # Try to find image URL in RSS extensions
             image_url = None
@@ -232,12 +222,13 @@ def fetch_and_ingest():
                 "image_url": image_url
             })
             
-    # 2. Fetch NGO Scraped Data
+    # 2. Fetch NGO Scraped Data (EFI is currently special-cased logic)
     efi_entries = scrape_efi_news()
     all_raw_entries.extend(efi_entries)
     
-    # 3. Fetch Social Sentinels
-    social_entries = fetch_social_sentinels()
+    # 3. Fetch Social Sentinels from DB
+    social_handles = [s['url_or_handle'] for s in db_sources if s['source_type'] == 'social']
+    social_entries = fetch_social_sentinels(social_handles)
     all_raw_entries.extend(social_entries)
     
     for entry_data in all_raw_entries:
