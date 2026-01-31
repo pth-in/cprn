@@ -90,6 +90,10 @@ NEGATIVE_KEYWORDS = [
 
 def init_supabase() -> Client:
     return create_client(SUPABASE_URL, SUPABASE_KEY)
+def batch_summarize_incidents(incidents):
+    """Summarizes a batch of incidents in a single Gemini call."""
+    if not client or not incidents:
+        return [sanitize_text(inc['description'])[:500] + "..." for inc in incidents]
 
     retries = 3
     for attempt in range(retries):
