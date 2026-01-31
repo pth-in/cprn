@@ -44,21 +44,33 @@ Once information is verified, the network must act swiftly but safely.
 
 ---
 
-## 3. Product Vision: The CPRN Incident Portal
+### Component Breakdown: "The Incident Card"
+Each card should be a high-impact visual summary:
+- **Header**: Incident Date + Source Badges (e.g., [ICC] [Morning Star]).
+- **Body**: 
+    - Bold Title (max 2 lines).
+    - Location Tag (e.g., "📍 Ludhiana, Punjab").
+    - Short truncated description (max 3 lines).
+- **Footer**: 
+    - "Read More" button.
+    - Social Share Icon (WhatsApp/X).
+    - Status Badge (e.g., "Verified" or "Active").
 
-The portal will be the public face of the network, designed for high impact and easy sharing.
+### Detail Modal / Page
+When a user clicks "Read More":
+- **Full Narrative**: The complete text from the sources.
+- **Source Links**: Clickable list of original reports.
+- **Action Dashboard**: 
+    - Permanent "GiveSendGo" button (if available).
+    - Prayer Points (specific needs like "Pray for the family").
+    - Legal Status tracker.
 
-### UI/UX: The "Incident Stream"
-- **Infinite Scroll Landing Page**: A continuous feed of incident cards, sorted by `Incident Date` (newest first).
-- **Responsive Card Layout**:
-    - **Mobile**: 1 card per row (stacking vertically).
-    - **Tablet/Desktop**: Responsive grid (2-4 cards per row depending on width).
-- **Filtering & Search**:
-    - Real-time search by location (Country/City), names, or description keywords.
-    - Tag-based filtering (e.g., "Legal Aid Needed", "Evicted").
-- **Individual Incident Pages**:
-    - Direct links for every card (e.g., `cprn.org/incident/123`).
-    - Detailed narrative, links to original news sources, and a dedicated **Action Section** (e.g., GiveSendGo links).
+### Aesthetics & "Vibe"
+- **Color Palette**: 
+    - Deep Charcoal/Slate Background (Serious, trustworthy feel).
+    - Accent: Warm Gold or Crimson (Urgency without being overwhelming).
+- **Typography**: Clean sans-serif (Inter or Montserrat) for high legibility.
+- **Micro-Animations**: Subtle hover effects on cards and a "smooth load" effect for infinite scroll.
 
 ---
 
