@@ -13,7 +13,17 @@ SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 FEEDS = [
     {"name": "ICC", "url": "https://www.persecution.org/feed"},
     {"name": "Morning Star News", "url": "https://morningstarnews.org/tag/religious-persecution/feed/"},
-    {"name": "Christian Today India", "url": "https://www.christiantoday.co.in/rss.xml"}
+    {"name": "Christian Today India", "url": "https://www.christiantoday.co.in/rss.xml"},
+    {"name": "UCA News", "url": "https://www.ucanews.com/rss/news"},
+    {"name": "AsiaNews", "url": "https://www.asianews.it/index.php?l=en&art=1&size=0"}
+]
+
+# Contextual keywords to ensure relevance for broader sources
+CONTEXT_KEYWORDS = [
+    "persecution", "attack", "arrest", "arrested", "vandal", "vandalized", 
+    "killed", "beaten", "mob", "threaten", "violence", "prison", "jail", 
+    "police", "investigate", "court", "law", "conversion", "anti-conversion",
+    "burned", "destroyed", "forced", "torture", "harassed", "beating"
 ]
 
 def init_supabase() -> Client:
@@ -42,8 +52,13 @@ def fetch_and_ingest():
                 link = entry.link
                 description = entry.get("summary", entry.get("description", ""))
                 
-                # India Filter
-                if not ("india" in title.lower() or "india" in description.lower()):
+                # India + Persecution Context Filter
+                full_text = f"{title} {description}".lower()
+                if not "india" in full_text:
+                    continue
+                
+                # Check for persecution context
+                if not any(kw in full_text for kw in CONTEXT_KEYWORDS):
                     continue
 
                 pub_date_str = entry.get("published", entry.get("updated", datetime.now().isoformat()))
