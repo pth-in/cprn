@@ -43,13 +43,16 @@ def fetch_and_ingest():
                     "description": description,
                     "source_name": feed_info['name'],
                     "tags": [], # Initial empty tags
-                    "location_raw": "" # To be refined later
+                    "location_raw": "India" # Setting to India for now
                 }
                 
-                # Upsert to Supabase
-                # on_conflict='source_url' ensures we don't create duplicates
-                result = supabase.table("incidents").upsert(data, on_conflict="source_url").execute()
-                print(f"Ingested: {title[:50]}...")
+                # Filtering logic: Only ingest if 'India' is in the title or description
+                if "india" in title.lower() or "india" in description.lower():
+                    # Upsert to Supabase
+                    supabase.table("incidents").upsert(data, on_conflict="source_url").execute()
+                    print(f"Ingested (India): {title[:50]}...")
+                else:
+                    print(f"Skipped (Non-India): {title[:50]}...")
                 
             except Exception as e:
                 print(f"Error processing entry {getattr(entry, 'link', 'unknown')}: {e}")

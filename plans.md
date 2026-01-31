@@ -1,6 +1,6 @@
-# CPRN: Brainstorming & Strategic Plan
+# CPRN: Brainstorming & Strategic Plan (India Focus)
 
-This document outlines the initial brainstorming for the **Christian Persecution Response Network (CPRN)**. The goal is to build a robust system for gathering information on persecution and reaching out to provide support.
+This document outlines the strategic plan for the **Christian Persecution Response Network (CPRN)**, now specifically focused on monitoring and responding to incidents within **India**.
 
 ## 1. Information Gathering (Data Ingestion)
 
