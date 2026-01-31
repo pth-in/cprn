@@ -159,56 +159,56 @@ def fetch_and_ingest():
             link = entry_data['link']
             description = entry_data['description']
                 
-                # India + Persecution Context Filter
-                full_text = f"{title} {description}".lower()
-                if not "india" in full_text:
-                    continue
-                
-                if not any(kw in full_text for kw in CONTEXT_KEYWORDS):
-                    continue
+            # India + Persecution Context Filter
+            full_text = f"{title} {description}".lower()
+            if not "india" in full_text:
+                continue
+            
+            if not any(kw in full_text for kw in CONTEXT_KEYWORDS):
+                continue
 
-                pub_date_str = entry_data.get("published", datetime.now().isoformat())
-                incident_date = date_parser.parse(pub_date_str)
-                
-                # 1. Check if URL already exists anywhere
-                # We can use a simple query for this since we want to avoid re-processing the same link
-                existing_by_url = supabase.table("incidents").select("id").filter("sources", "cs", f'[{{"url": "{link}"}}]').execute()
-                if existing_by_url.data:
-                    print(f"URL exists, skipping: {title[:50]}...")
-                    continue
+            pub_date_str = entry_data.get("published", datetime.now().isoformat())
+            incident_date = date_parser.parse(pub_date_str)
+            
+            # 1. Check if URL already exists anywhere
+            # We can use a simple query for this since we want to avoid re-processing the same link
+            existing_by_url = supabase.table("incidents").select("id").filter("sources", "cs", f'[{{"url": "{link}"}}]').execute()
+            if existing_by_url.data:
+                print(f"URL exists, skipping: {title[:50]}...")
+                continue
 
-                # 2. Look for similar incidents in the last 72 hours
-                three_days_ago = (datetime.now() - timedelta(days=3)).isoformat()
-                recent_incidents = supabase.table("incidents").select("*").gt("incident_date", three_days_ago).execute()
-                
-                match_found = False
-                for existing in recent_incidents.data:
-                    similarity = fuzz.token_set_ratio(title.lower(), existing['title'].lower())
-                    if similarity > 75: # 75% similarity threshold
-                        # Found a broad match, add this source to the existing incident
-                        updated_sources = existing['sources']
-                        updated_sources.append({"name": feed_info['name'], "url": link})
-                        
-                        supabase.table("incidents").update({"sources": updated_sources}).eq("id", existing['id']).execute()
-                        print(f"Grouped (Similarity {similarity}%): {title[:50]} with existing incident.")
-                        match_found = True
-                        break
-                
-                if not match_found:
-                    # New incident altogether
-                    data = {
-                        "title": title,
-                        "incident_date": incident_date.isoformat(),
-                        "description": description,
-                        "location_raw": "India",
-                        "sources": [{"name": feed_info['name'], "url": link}],
-                        "is_verified": False
-                    }
-                    supabase.table("incidents").insert(data).execute()
-                    print(f"Ingested New (India): {title[:50]}...")
-                
-            except Exception as e:
-                print(f"Error processing {getattr(entry, 'link', 'unknown')}: {e}")
+            # 2. Look for similar incidents in the last 72 hours
+            three_days_ago = (datetime.now() - timedelta(days=3)).isoformat()
+            recent_incidents = supabase.table("incidents").select("*").gt("incident_date", three_days_ago).execute()
+            
+            match_found = False
+            for existing in recent_incidents.data:
+                similarity = fuzz.token_set_ratio(title.lower(), existing['title'].lower())
+                if similarity > 75: # 75% similarity threshold
+                    # Found a broad match, add this source to the existing incident
+                    updated_sources = existing['sources']
+                    updated_sources.append({"name": entry_data['source_name'], "url": link})
+                    
+                    supabase.table("incidents").update({"sources": updated_sources}).eq("id", existing['id']).execute()
+                    print(f"Grouped (Similarity {similarity}%): {title[:50]} with existing incident.")
+                    match_found = True
+                    break
+            
+            if not match_found:
+                # New incident altogether
+                data = {
+                    "title": title,
+                    "incident_date": incident_date.isoformat(),
+                    "description": description,
+                    "location_raw": "India",
+                    "sources": [{"name": entry_data['source_name'], "url": link}],
+                    "is_verified": False
+                }
+                supabase.table("incidents").insert(data).execute()
+                print(f"Ingested New (India): {title[:50]}...")
+            
+        except Exception as e:
+            print(f"Error processing {entry_data.get('link', 'unknown')}: {e}")
 
 if __name__ == "__main__":
     if not SUPABASE_URL or not SUPABASE_KEY:
