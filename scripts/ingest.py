@@ -90,40 +90,36 @@ NEGATIVE_KEYWORDS = [
 def init_supabase() -> Client:
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
-def summarize_incident(title, description):
-    """Generates a concise 10-line summary using Gemini AI."""
-    if not client:
-        # Fallback: Simple extractive summary (first 3 sentences)
-        sentences = description.split('.')[:3]
-        return ". ".join(sentences) + "." if sentences else description
+def batch_summarize_incidents(incidents):
+    """Summarizes a batch of incidents in a single Gemini call."""
+    if not client or not incidents:
+        return [sanitize_text(inc['description'])[:500] + "..." for inc in incidents]
 
-    retries = 3
-    for attempt in range(retries):
-        try:
-            prompt = f"""
-            Summarize the following Christian persecution incident in India in exactly 10 short, bulleted lines. 
-            Focus on: What happened, Who was involved, Where, and Current status.
-            Highlight important names or entities in bold.
-            Title: {title}
-            Full Report: {description}
-            """
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=prompt
-            )
-            # Add a small delay for free tier rate limits
-            time.sleep(2)
-            return response.text
-        except Exception as e:
-            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                wait_time = (2 ** attempt) + 5
-                print(f"Rate limited (429). Retrying in {wait_time}s... (Attempt {attempt+1}/{retries})")
-                time.sleep(wait_time)
-            else:
-                print(f"Gemini Error: {e}")
-                break
-    
-    return description[:500] + "..."
+    try:
+        batch_prompt = "Summarize the following Christian persecution incidents in India. For each incident, provide exactly 10 short, bulleted lines focusing on: What happened, Who was involved, Where, and Current status. Highlight important names or entities in bold.\n\n"
+        
+        for i, inc in enumerate(incidents):
+            batch_prompt += f"--- INCIDENT {i+1} ---\nTITLE: {inc['title']}\nREPORT: {inc['description']}\n\n"
+            
+        batch_prompt += "\nReturn each summary separated by '===END_SUMMARY==='. Do not include the incident numbers or titles in your response, just the summaries."
+
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=batch_prompt
+        )
+        
+        summaries = response.text.split("===END_SUMMARY===")
+        # Clean up and pad if Gemini missed some (rare but safe)
+        summaries = [s.strip() for s in summaries if s.strip()]
+        
+        while len(summaries) < len(incidents):
+            summaries.append("Summary unavailable.")
+            
+        return summaries[:len(incidents)]
+
+    except Exception as e:
+        print(f"Batch Gemini Error: {e}")
+        return [inc['description'][:500] + "..." for inc in incidents]
 
 def sanitize_text(text):
     """Removes HTML tags and extra whitespace."""
@@ -255,6 +251,7 @@ def fetch_and_ingest():
     db_sources = sources_result.data
     
     all_raw_entries = []
+    incidents_to_ingest = []
     
     # 1. Fetch RSS Feeds from DB
     rss_sources = [s for s in db_sources if s['source_type'] == 'rss']
@@ -362,23 +359,40 @@ def fetch_and_ingest():
                     break
             
             if not match_found:
-                # Generate Summary
-                print(f"Summarizing ({entry_data['source_name']}): {title[:50]}...")
-                summary = summarize_incident(title, description)
-
-                # New incident altogether
-                data = {
+                # Add to batch for ingestion
+                incidents_to_ingest.append({
                     "title": title,
                     "incident_date": incident_date.isoformat(),
                     "description": description,
-                    "summary": summary,
                     "location_raw": location,
                     "sources": [{"name": entry_data['source_name'], "url": link}],
                     "is_verified": False,
                     "image_url": image_url
-                }
-                supabase.table("incidents").insert(data).execute()
-                print(f"Ingested New ({location}): {title[:50]}...")
+                })
+
+        except Exception as e:
+            print(f"Error processing {entry_data.get('link', 'unknown')}: {e}")
+
+    # Process Batch Ingestion
+    if incidents_to_ingest:
+        print(f"Processing batch of {len(incidents_to_ingest)} new incidents...")
+        
+        # Split into smaller batches for Gemini (max 5 at a time)
+        batch_size = 5
+        for i in range(0, len(incidents_to_ingest), batch_size):
+            batch = incidents_to_ingest[i:i + batch_size]
+            print(f"Summarizing batch {i//batch_size + 1}...")
+            summaries = batch_summarize_incidents(batch)
+            
+            for index, inc in enumerate(batch):
+                inc['summary'] = summaries[index]
+            
+            # Insert batch into Supabase
+            try:
+                supabase.table("incidents").insert(batch).execute()
+                print(f"Successfully ingested {len(batch)} incidents.")
+            except Exception as e:
+                print(f"Error inserting batch: {e}")
             
         except Exception as e:
             print(f"Error processing {entry_data.get('link', 'unknown')}: {e}")
