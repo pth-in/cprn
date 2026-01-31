@@ -3,8 +3,8 @@ const { useState, useEffect, useCallback, useRef } = React;
 // --- Supabase Config ---
 // Since this is a static frontend on GitHub Pages, the URL and Anon Key are public.
 // Replace these with your actual Supabase credentials.
-const SUPABASE_URL = "https://your-project-url.supabase.co";
-const SUPABASE_ANON_KEY = "your-anon-key";
+const SUPABASE_URL = "https://tvbmjectzcowsjzidumg.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_NFMG2axuLqnH2AbPUjR7OA_L70ojzSM";
 
 const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
