@@ -31,6 +31,39 @@ NITTER_MIRRORS = [
     "https://nitter.cz"
 ]
 
+# Indian State and Major Region keywords
+INDIAN_LOCATIONS = {
+    "Andhra Pradesh": ["andhra pradesh", "andhra", "vijayawada", "visakhapatnam", "hyderabad"],
+    "Arunachal Pradesh": ["arunachal pradesh", "arunachal", "itanagar"],
+    "Assam": ["assam", "guwahati", "dispur"],
+    "Bihar": ["bihar", "patna", "gaya"],
+    "Chhattisgarh": ["chhattisgarh", "raipur", "bastat", "dantewada"],
+    "Goa": ["goa", "panaji"],
+    "Gujarat": ["gujarat", "ahmedabad", "surat", "vadodara"],
+    "Haryana": ["haryana", "gurugram", "panipat"],
+    "Himachal Pradesh": ["himachal pradesh", "himachal", "shimla"],
+    "Jharkhand": ["jharkhand", "ranchi", "jamshedpur"],
+    "Karnataka": ["karnataka", "bengaluru", "bangalore", "mysuru", "belagavi"],
+    "Kerala": ["kerala", "kochi", "thiruvananthapuram", "wayanad"],
+    "Madhya Pradesh": ["madhya pradesh", "mp", "indore", "bhopal", "jabalpur"],
+    "Maharashtra": ["maharashtra", "mumbai", "pune", "nagpur", "nashik"],
+    "Manipur": ["manipur", "imphal"],
+    "Meghalaya": ["meghalaya", "shillong"],
+    "Mizoram": ["mizoram", "aizawl"],
+    "Nagaland": ["nagaland", "kohima"],
+    "Odisha": ["odisha", "bhubaneswar", "cuttack", "kandhamal"],
+    "Punjab": ["punjab", "ludhiana", "amritsar", "jalandhar"],
+    "Rajasthan": ["rajasthan", "jaipur", "jodhpur", "udaipur"],
+    "Sikkim": ["sikkim", "gangtok"],
+    "Tamil Nadu": ["tamil nadu", "tamilnadu", "chennai", "coimbatore", "madurai"],
+    "Telangana": ["telangana", "hyderabad", "warangal"],
+    "Tripura": ["tripura", "agartala"],
+    "Uttar Pradesh": ["uttar pradesh", "up", "lucknow", "kanpur", "agra", "varanasi", "noida"],
+    "Uttarakhand": ["uttarakhand", "dehradun", "haridwar"],
+    "West Bengal": ["west bengal", "kolkata", "howrah"],
+    "Delhi": ["delhi", "new delhi"]
+}
+
 # Contextual keywords to ensure relevance for broader sources (Must be Christian Context)
 CONTEXT_KEYWORDS = [
     "persecution", "attack", "arrest", "arrested", "vandal", "vandalized", 
@@ -43,6 +76,26 @@ CONTEXT_KEYWORDS = [
 
 def init_supabase() -> Client:
     return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+def sanitize_text(text):
+    """Removes HTML tags and extra whitespace."""
+    if not text: return ""
+    # Strip HTML tags
+    clean = BeautifulSoup(text, "html.parser").get_text()
+    # Remove extra whitespace
+    clean = re.sub(r'\s+', ' ', clean).strip()
+    return clean
+
+def extract_location(title, description):
+    """Attempts to find a specific Indian state or city in the text."""
+    full_text = f"{title} {description}".lower()
+    
+    # Priority search for states and their respective cities
+    for state, keywords in INDIAN_LOCATIONS.items():
+        if any(kw in full_text for kw in keywords):
+            return state
+            
+    return "India" # Fallback
 
 def fetch_social_sentinels():
     """Fetches updates from X sentinels using Nitter mirrors."""
@@ -157,7 +210,11 @@ def fetch_and_ingest():
         try:
             title = clean_title(entry_data['title'])
             link = entry_data['link']
-            description = entry_data['description']
+            # Sanitize description (remove HTML)
+            description = sanitize_text(entry_data['description'])
+            
+            # Extract specific location
+            location = extract_location(title, description)
                 
             # India + Persecution Context Filter
             full_text = f"{title} {description}".lower()
@@ -200,12 +257,12 @@ def fetch_and_ingest():
                     "title": title,
                     "incident_date": incident_date.isoformat(),
                     "description": description,
-                    "location_raw": "India",
+                    "location_raw": location,
                     "sources": [{"name": entry_data['source_name'], "url": link}],
                     "is_verified": False
                 }
                 supabase.table("incidents").insert(data).execute()
-                print(f"Ingested New (India): {title[:50]}...")
+                print(f"Ingested New ({location}): {title[:50]}...")
             
         except Exception as e:
             print(f"Error processing {entry_data.get('link', 'unknown')}: {e}")
