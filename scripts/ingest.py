@@ -17,7 +17,11 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 # Configure Gemini
 client = None
 if GEMINI_API_KEY:
-    client = genai.Client(api_key=GEMINI_API_KEY)
+    try:
+        # Use v1 to avoid v1beta restrictions
+        client = genai.Client(api_key=GEMINI_API_KEY, http_options={'api_version': 'v1'})
+    except Exception as e:
+        print(f"Error initializing Gemini Client: {e}")
 
 # Working Nitter Mirrors (Fallbacks)
 NITTER_MIRRORS = [
@@ -108,6 +112,15 @@ def summarize_incident(title, description):
         return response.text
     except Exception as e:
         print(f"Gemini Error: {e}")
+        # Diagnostic: List models if we hit a 404 or unknown error
+        if "404" in str(e) or "NOT_FOUND" in str(e):
+            try:
+                print("--- DIAGNOSTIC: Listing available models ---")
+                for m in client.models.list():
+                    print(f"Available: {m.name}")
+                print("------------------------------------------")
+            except:
+                pass
         return description[:500] + "..."
 
 def sanitize_text(text):
