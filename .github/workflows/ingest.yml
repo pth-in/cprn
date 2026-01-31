@@ -19,7 +19,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install feedparser supabase python-dateutil
+          pip install -r requirements.txt
 
       - name: Run Ingestion Script
         env:
