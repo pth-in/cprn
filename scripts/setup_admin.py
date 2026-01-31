@@ -15,12 +15,20 @@ def setup_admin():
     # Basic Key Validation Print (Secure)
     print(f"DEBUG: URL starts with: {SUPABASE_URL[:10]}...")
     print(f"DEBUG: Key length: {len(SUPABASE_KEY)}")
+    print(f"DEBUG: Key type: {'JWT' if SUPABASE_KEY.startswith('ey') else 'New Format (sb_)'}")
     print(f"DEBUG: Key starts with: {SUPABASE_KEY[:10]}...")
 
     try:
         supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        # Test connection with a simple query
+        print("DEBUG: Testing connection...")
+        supabase.table("dashboard_users").select("id", count="exact").limit(1).execute()
+        print("DEBUG: Connection successful!")
     except Exception as e:
-        print(f"DEBUG: Failed to initialize Supabase client: {str(e)}")
+        print(f"DEBUG: Connection failed: {str(e)}")
+        if "Invalid API key" in str(e):
+            print("TIP: You might be using a 'Management API Key' instead of the 'Service Role Key'.")
+            print("TIP: Look for the 'service_role' key (usually a very long JWT string starting with 'ey').")
         raise
     
     # 1. Create Admin User
