@@ -106,21 +106,12 @@ def summarize_incident(title, description):
         Full Report: {description}
         """
         response = client.models.generate_content(
-            model="gemini-1.5-flash",
+            model="gemini-2.0-flash",
             contents=prompt
         )
         return response.text
     except Exception as e:
         print(f"Gemini Error: {e}")
-        # Diagnostic: List models if we hit a 404 or unknown error
-        if "404" in str(e) or "NOT_FOUND" in str(e):
-            try:
-                print("--- DIAGNOSTIC: Listing available models ---")
-                for m in client.models.list():
-                    print(f"Available: {m.name}")
-                print("------------------------------------------")
-            except:
-                pass
         return description[:500] + "..."
 
 def sanitize_text(text):
