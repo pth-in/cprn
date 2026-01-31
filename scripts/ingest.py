@@ -1,5 +1,6 @@
 import feedparser
 import os
+import time
 import re
 import requests
 from bs4 import BeautifulSoup
@@ -90,36 +91,39 @@ NEGATIVE_KEYWORDS = [
 def init_supabase() -> Client:
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
-def batch_summarize_incidents(incidents):
-    """Summarizes a batch of incidents in a single Gemini call."""
-    if not client or not incidents:
-        return [sanitize_text(inc['description'])[:500] + "..." for inc in incidents]
-
-    try:
-        batch_prompt = "Summarize the following Christian persecution incidents in India. For each incident, provide exactly 10 short, bulleted lines focusing on: What happened, Who was involved, Where, and Current status. Highlight important names or entities in bold.\n\n"
-        
-        for i, inc in enumerate(incidents):
-            batch_prompt += f"--- INCIDENT {i+1} ---\nTITLE: {inc['title']}\nREPORT: {inc['description']}\n\n"
+    retries = 3
+    for attempt in range(retries):
+        try:
+            batch_prompt = "Summarize the following Christian persecution incidents in India. For each incident, provide exactly 10 short, bulleted lines focusing on: What happened, Who was involved, Where, and Current status. Highlight important names or entities in bold.\n\n"
             
-        batch_prompt += "\nReturn each summary separated by '===END_SUMMARY==='. Do not include the incident numbers or titles in your response, just the summaries."
+            for i, inc in enumerate(incidents):
+                batch_prompt += f"--- INCIDENT {i+1} ---\nTITLE: {inc['title']}\nREPORT: {inc['description']}\n\n"
+                
+            batch_prompt += "\nReturn each summary separated by '===END_SUMMARY==='. Do not include the incident numbers or titles in your response, just the summaries."
 
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=batch_prompt
-        )
-        
-        summaries = response.text.split("===END_SUMMARY===")
-        # Clean up and pad if Gemini missed some (rare but safe)
-        summaries = [s.strip() for s in summaries if s.strip()]
-        
-        while len(summaries) < len(incidents):
-            summaries.append("Summary unavailable.")
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=batch_prompt
+            )
             
-        return summaries[:len(incidents)]
+            summaries = response.text.split("===END_SUMMARY===")
+            summaries = [s.strip() for s in summaries if s.strip()]
+            
+            while len(summaries) < len(incidents):
+                summaries.append("Summary unavailable.")
+                
+            return summaries[:len(incidents)]
 
-    except Exception as e:
-        print(f"Batch Gemini Error: {e}")
-        return [inc['description'][:500] + "..." for inc in incidents]
+        except Exception as e:
+            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                wait_time = (5 ** attempt) + 10
+                print(f"Batch rate limited (429). Retrying in {wait_time}s... (Attempt {attempt+1}/{retries})")
+                time.sleep(wait_time)
+            else:
+                print(f"Batch Gemini Error: {e}")
+                break
+    
+    return [inc['description'][:500] + "..." for inc in incidents]
 
 def sanitize_text(text):
     """Removes HTML tags and extra whitespace."""
@@ -378,7 +382,8 @@ def fetch_and_ingest():
         print(f"Processing batch of {len(incidents_to_ingest)} new incidents...")
         
         # Split into smaller batches for Gemini (max 5 at a time)
-        batch_size = 5
+        # Reduced batch size for better free tier reliability
+        batch_size = 3
         for i in range(0, len(incidents_to_ingest), batch_size):
             batch = incidents_to_ingest[i:i + batch_size]
             print(f"Summarizing batch {i//batch_size + 1}...")
