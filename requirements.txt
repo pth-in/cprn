@@ -1,3 +1,5 @@
 feedparser
 supabase
 python-dateutil
+thefuzz
+python-Levenshtein

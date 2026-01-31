@@ -8,13 +8,17 @@ To effectively respond, we need reliable, real-time information from multiple so
 
 ### Priority 1: Automated RSS Ingestion (Easily Integrated)
 - **International Christian Concern (ICC)**: [persecution.org/feed](https://www.persecution.org/feed)
-    - *Coverage*: Global, rapid reporting on incidents.
 - **Morning Star News**: [morningstarnews.org/feed](https://morningstarnews.org/tag/religious-persecution/feed/)
-    - *Coverage*: In-depth investigative journalism on persecution.
+- **Christian Today India**: [christiantoday.co.in/rss.xml](https://www.christiantoday.co.in/rss.xml)
 
-### Priority 2: Semi-Automated Monitoring (Periodic Scraping)
-- **Voice of the Martyrs (VOM)**: Monitoring [persecution.com](https://www.persecution.com/newsroom/) and their podcast feed.
-- **Open Doors (World Watch List)**: Annual data ingestion from leur dossiers and weekly prayer updates.
+### Deduplication Strategy: "One Incident, Many Sources"
+To avoid cluttering the feed when multiple sources report the same event:
+- **Similarity Comparison**: The ingestion script compares incoming titles with DB entries from the last 3 days.
+- **Source Grouping**: If a match is found, the new source is added to the existing card. 
+- **Benefits**:
+    - Cleaner UI (No duplicate cards).
+    - Higher Credibility (Shows multiple sources for one event).
+    - Richer Data (Combined descriptions).
 
 ### Priority 3: Local Networks & Crowdsourcing
 - **Direct Submissions**: A future secure form for verified partners to submit reports.
