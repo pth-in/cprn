@@ -17,7 +17,11 @@ FEEDS = [
     {"name": "Morning Star News", "url": "https://morningstarnews.org/tag/religious-persecution/feed/"},
     {"name": "Christian Today India", "url": "https://www.christiantoday.co.in/rss.xml"},
     {"name": "UCA News", "url": "https://www.ucanews.com/rss/news"},
-    {"name": "AsiaNews", "url": "https://www.asianews.it/index.php?l=en&art=1&size=0"}
+    {"name": "AsiaNews", "url": "https://www.asianews.it/index.php?l=en&art=1&size=0"},
+    # Google News Targeted Searches
+    {"name": "Google News (Persecution)", "url": "https://news.google.com/rss/search?q=%22Christian+persecution%22+India&hl=en-IN&gl=IN&ceid=IN:en"},
+    {"name": "Google News (Attacks)", "url": "https://news.google.com/rss/search?q=%22Attack+on+Christians%22+India&hl=en-IN&gl=IN&ceid=IN:en"},
+    {"name": "Google News (Anti-Conversion)", "url": "https://news.google.com/rss/search?q=%22Anti-conversion+laws%22+India&hl=en-IN&gl=IN&ceid=IN:en"}
 ]
 
 # Social Media Sentinels (X/Twitter Handles)
