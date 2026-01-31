@@ -7,10 +7,16 @@ from datetime import datetime, timedelta
 from supabase import create_client, Client
 from dateutil import parser as date_parser
 from thefuzz import fuzz
+import google.generativeai as genai
 
 # Configuration
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SECRET_KEY")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+
+# Configure Gemini
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
 
 # Working Nitter Mirrors (Fallbacks)
 NITTER_MIRRORS = [
@@ -78,6 +84,28 @@ NEGATIVE_KEYWORDS = [
 
 def init_supabase() -> Client:
     return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+def summarize_incident(title, description):
+    """Generates a concise 10-line summary using Gemini AI."""
+    if not GEMINI_API_KEY:
+        # Fallback: Simple extractive summary (first 3 sentences)
+        sentences = description.split('.')[:3]
+        return ". ".join(sentences) + "." if sentences else description
+
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        prompt = f"""
+        Summarize the following Christian persecution incident in India in exactly 10 short, bulleted lines. 
+        Focus on: What happened, Who was involved, Where, and Current status.
+        Highlight important names or entities in bold.
+        Title: {title}
+        Full Report: {description}
+        """
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        print(f"Gemini Error: {e}")
+        return description[:500] + "..."
 
 def sanitize_text(text):
     """Removes HTML tags and extra whitespace."""
@@ -310,11 +338,16 @@ def fetch_and_ingest():
                     break
             
             if not match_found:
+                # Generate Summary
+                print(f"Summarizing ({entry_data['source_name']}): {title[:50]}...")
+                summary = summarize_incident(title, description)
+
                 # New incident altogether
                 data = {
                     "title": title,
                     "incident_date": incident_date.isoformat(),
                     "description": description,
+                    "summary": summary,
                     "location_raw": location,
                     "sources": [{"name": entry_data['source_name'], "url": link}],
                     "is_verified": False,

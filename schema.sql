@@ -13,6 +13,7 @@ CREATE TABLE incidents (
     tags TEXT[] DEFAULT '{}',
     is_verified BOOLEAN DEFAULT false,
     image_url TEXT,
+    summary TEXT,
     -- similarity_hash helps in finding potential duplicates quickly
     similarity_hash TEXT
 );

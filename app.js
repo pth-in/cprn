@@ -520,7 +520,6 @@ const App = () => {
                 </div>
             )}
 
-            {/* Modal */}
             {selectedIncident && (
                 <div className="modal-overlay" onClick={() => setSelectedIncident(null)}>
                     <div className="modal-content" onClick={e => e.stopPropagation()}>
@@ -533,11 +532,34 @@ const App = () => {
                         </div>
 
                         <div style={{ lineHeight: 1.8 }}>
-                            <p style={{ whiteSpace: 'pre-wrap', marginBottom: '2rem' }}>
+                            {selectedIncident.summary && (
+                                <div className="summary-section" style={{
+                                    background: 'var(--bg-secondary)',
+                                    padding: '1.5rem',
+                                    borderRadius: '12px',
+                                    marginBottom: '2rem',
+                                    borderLeft: '4px solid var(--accent-gold)',
+                                    fontSize: '0.95rem'
+                                }}>
+                                    <h4 style={{ color: 'var(--accent-gold)', marginTop: 0, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <i data-lucide="sparkles" style={{ width: '16px' }}></i> AI Briefing
+                                    </h4>
+                                    <div style={{ whiteSpace: 'pre-wrap' }}>
+                                        {selectedIncident.summary}
+                                    </div>
+                                </div>
+                            )}
+
+                            <h4 style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <i data-lucide="file-text" style={{ width: '16px' }}></i> Full Report
+                            </h4>
+                            <p className="modal-description" style={{ whiteSpace: 'pre-wrap', marginBottom: '2rem', color: 'var(--text-primary)' }}>
                                 {stripHtml(selectedIncident.description)}
                             </p>
 
-                            <h4 style={{ marginBottom: '1rem', color: 'var(--accent-gold)' }}>Verified Reporting Sources:</h4>
+                            <h4 style={{ marginBottom: '1rem', color: 'var(--accent-gold)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <i data-lucide="check-circle" style={{ width: '16px' }}></i> Verified Reporting Sources:
+                            </h4>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
                                 {selectedIncident.sources.map((s, i) => (
                                     <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" className="badge" style={{ display: 'block', padding: '1rem', textAlign: 'left', textDecoration: 'none' }}>
@@ -549,6 +571,14 @@ const App = () => {
                                 ))}
                             </div>
                         </div>
+
+                        <button
+                            className="btn-icon"
+                            style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'transparent' }}
+                            onClick={() => setSelectedIncident(null)}
+                        >
+                            <i data-lucide="x"></i>
+                        </button>
                     </div>
                 </div>
             )}
