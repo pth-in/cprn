@@ -175,7 +175,7 @@ def fetch_social_sentinels(handles):
 
 def scrape_efi_news():
     """Scrapes the latest news from EFI website."""
-    url = "https://efionline.org/efi-news/"
+    url = "https://efionline.org/news-events/"
     print(f"Scraping EFI News: {url}")
     try:
         response = requests.get(url, timeout=15)
@@ -289,6 +289,7 @@ def fetch_and_ingest():
             image_url = entry_data.get('image_url')
                 
             # India?
+            full_text = f"{title} {description}".lower()
             if not "india" in full_text:
                 continue
             
