@@ -18,12 +18,14 @@ FEEDS = [
     {"name": "AsiaNews", "url": "https://www.asianews.it/index.php?l=en&art=1&size=0"}
 ]
 
-# Contextual keywords to ensure relevance for broader sources
+# Contextual keywords to ensure relevance for broader sources (Must be Christian Context)
 CONTEXT_KEYWORDS = [
     "persecution", "attack", "arrest", "arrested", "vandal", "vandalized", 
     "killed", "beaten", "mob", "threaten", "violence", "prison", "jail", 
     "police", "investigate", "court", "law", "conversion", "anti-conversion",
-    "burned", "destroyed", "forced", "torture", "harassed", "beating"
+    "burned", "destroyed", "forced", "torture", "harassed", "beating",
+    "pastor", "priest", "church", "christian", "believer", "worship", "ministry",
+    "parish", "nun", "bishop", "prayer meeting"
 ]
 
 def init_supabase() -> Client:
