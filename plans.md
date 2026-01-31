@@ -10,6 +10,14 @@ To effectively respond, we need reliable, real-time information from multiple so
 - **International Christian Concern (ICC)**: [persecution.org/feed](https://www.persecution.org/feed)
 - **Morning Star News**: [morningstarnews.org/feed](https://morningstarnews.org/tag/religious-persecution/feed/)
 - **Christian Today India**: [christiantoday.co.in/rss.xml](https://www.christiantoday.co.in/rss.xml)
+- [PENDING] **UCA News**: `ucanews.com/rss/news` (Needs "India" + Keyword filtering)
+- [PENDING] **AsiaNews**: `asianews.it/index.php?l=en&art=1&size=0` (Needs "India" filtering)
+
+### Priority 2: NGO & Report Scraping (Targeted)
+These sources provide deeper, verified reports but often lack traditional RSS feeds:
+- **Evangelical Fellowship of India (EFI-RLC)**: High-quality verified reports from `efionline.org`. Requires a custom scraper for their "News" or "Reports" page.
+- **United Christian Forum (UCF)**: Critical human rights data from Delhi. 
+- **FIACONA**: Gather ground intelligence for US/International advocacy.
 
 ### Deduplication Strategy: "One Incident, Many Sources"
 To avoid cluttering the feed when multiple sources report the same event:

@@ -1,6 +1,8 @@
 import feedparser
 import os
 import re
+import requests
+from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 from supabase import create_client, Client
 from dateutil import parser as date_parser
@@ -31,6 +33,48 @@ CONTEXT_KEYWORDS = [
 def init_supabase() -> Client:
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
+def scrape_efi_news():
+    """Scrapes the latest news from EFI website."""
+    url = "https://efionline.org/efi-news/"
+    print(f"Scraping EFI News: {url}")
+    try:
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        entries = []
+        # EFI uses <article> tags for news items
+        articles = soup.find_all('article')
+        for article in articles:
+            title_tag = article.find(['h2', 'h3', 'h4'])
+            if not title_tag: continue
+            
+            link_tag = title_tag.find('a')
+            if not link_tag: continue
+            
+            title = link_tag.get_text(strip=True)
+            link = link_tag['href']
+            
+            # Try to find date
+            date_tag = article.find('time')
+            date_str = date_tag.get_text(strip=True) if date_tag else datetime.now().isoformat()
+            
+            # Get summary
+            desc_tag = article.find('div', class_='entry-content') or article.find('p')
+            description = desc_tag.get_text(strip=True) if desc_tag else ""
+            
+            entries.append({
+                "title": title,
+                "link": link,
+                "description": description,
+                "published": date_str,
+                "source_name": "Evangelical Fellowship of India"
+            })
+        return entries
+    except Exception as e:
+        print(f"Error scraping EFI: {e}")
+        return []
+
 def clean_title(title):
     # Remove common prefixes/suffixes and special characters for better matching
     title = re.sub(r'^(REPORT:|NEWS:|URGENT:)\s*', '', title, flags=re.IGNORECASE)
@@ -44,15 +88,30 @@ def is_duplicate_url(supabase, url):
 def fetch_and_ingest():
     supabase = init_supabase()
     
+    all_raw_entries = []
+    
+    # 1. Fetch RSS Feeds
     for feed_info in FEEDS:
-        print(f"Fetching feed: {feed_info['name']}")
+        print(f"Fetching RSS: {feed_info['name']}")
         feed = feedparser.parse(feed_info['url'])
-        
         for entry in feed.entries:
-            try:
-                title = clean_title(entry.title)
-                link = entry.link
-                description = entry.get("summary", entry.get("description", ""))
+            all_raw_entries.append({
+                "title": entry.title,
+                "link": entry.link,
+                "description": entry.get("summary", entry.get("description", "")),
+                "published": entry.get("published", entry.get("updated", datetime.now().isoformat())),
+                "source_name": feed_info['name']
+            })
+            
+    # 2. Fetch NGO Scraped Data
+    efi_entries = scrape_efi_news()
+    all_raw_entries.extend(efi_entries)
+    
+    for entry_data in all_raw_entries:
+        try:
+            title = clean_title(entry_data['title'])
+            link = entry_data['link']
+            description = entry_data['description']
                 
                 # India + Persecution Context Filter
                 full_text = f"{title} {description}".lower()
