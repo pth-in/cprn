@@ -97,22 +97,33 @@ def summarize_incident(title, description):
         sentences = description.split('.')[:3]
         return ". ".join(sentences) + "." if sentences else description
 
-    try:
-        prompt = f"""
-        Summarize the following Christian persecution incident in India in exactly 10 short, bulleted lines. 
-        Focus on: What happened, Who was involved, Where, and Current status.
-        Highlight important names or entities in bold.
-        Title: {title}
-        Full Report: {description}
-        """
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt
-        )
-        return response.text
-    except Exception as e:
-        print(f"Gemini Error: {e}")
-        return description[:500] + "..."
+    retries = 3
+    for attempt in range(retries):
+        try:
+            prompt = f"""
+            Summarize the following Christian persecution incident in India in exactly 10 short, bulleted lines. 
+            Focus on: What happened, Who was involved, Where, and Current status.
+            Highlight important names or entities in bold.
+            Title: {title}
+            Full Report: {description}
+            """
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt
+            )
+            # Add a small delay for free tier rate limits
+            time.sleep(2)
+            return response.text
+        except Exception as e:
+            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                wait_time = (2 ** attempt) + 5
+                print(f"Rate limited (429). Retrying in {wait_time}s... (Attempt {attempt+1}/{retries})")
+                time.sleep(wait_time)
+            else:
+                print(f"Gemini Error: {e}")
+                break
+    
+    return description[:500] + "..."
 
 def sanitize_text(text):
     """Removes HTML tags and extra whitespace."""
