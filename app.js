@@ -589,6 +589,27 @@ const App = () => {
             {selectedIncident && (
                 <div className="modal-overlay" onClick={() => setSelectedIncident(null)}>
                     <div className="modal-content" onClick={e => e.stopPropagation()}>
+                        <button
+                            className="btn-icon"
+                            style={{
+                                position: 'absolute',
+                                top: '1rem',
+                                right: '1rem',
+                                background: 'var(--bg-tertiary)',
+                                zIndex: 10,
+                                width: '32px',
+                                height: '32px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                borderRadius: '50%'
+                            }}
+                            onClick={() => setSelectedIncident(null)}
+                            title="Close"
+                        >
+                            <i data-lucide="x" style={{ width: '20px' }}></i>
+                        </button>
+
                         <div style={{ marginBottom: '2rem' }}>
                             <div className="date-badge" style={{ marginBottom: '0.5rem' }}>{formatDate(selectedIncident.incident_date)}</div>
                             <h1 className="card-title" style={{ fontSize: '1.8rem', marginBottom: '1rem' }}>{selectedIncident.title}</h1>
@@ -644,14 +665,6 @@ const App = () => {
                                 ))}
                             </div>
                         </div>
-
-                        <button
-                            className="btn-icon"
-                            style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'transparent' }}
-                            onClick={() => setSelectedIncident(null)}
-                        >
-                            <i data-lucide="x"></i>
-                        </button>
                     </div>
                 </div>
             )}
