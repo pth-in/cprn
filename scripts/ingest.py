@@ -24,7 +24,8 @@ class GeminiManager:
     def __init__(self, api_keys):
         self.api_keys = api_keys
         self.current_key_index = 0
-        self.models = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-flash-latest", "gemini-1.5-flash"]
+        # Models confirmed available for the user's API key
+        self.models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"]
         self.current_model_index = 0
         self.clients = {} # Cache clients for each key
         
@@ -59,11 +60,12 @@ class GeminiManager:
                 except Exception as e:
                     last_exception = e
                     err_msg = str(e).upper()
-                    if "429" in err_msg or "RESOURCE_EXHAUSTED" in err_msg:
-                        print(f"Model {model_name} rate limited with key ...{api_key[-4:]}. Trying next fallback...")
+                    # Fallback for rate limits AND not found errors (in case a model list is stale)
+                    if any(x in err_msg for x in ["429", "RESOURCE_EXHAUSTED", "404", "NOT_FOUND"]):
+                        print(f"Model {model_name} unavailable ({err_msg}) with key ...{api_key[-4:]}. Trying next fallback...")
                         continue # Try next model
                     else:
-                        # For other errors (like 400 Bad Request), don't bother falling back
+                        # For other unexpected errors, don't bother falling back unless necessary
                         print(f"Gemini Error ({model_name}): {e}")
                         raise e
             
