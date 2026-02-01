@@ -62,6 +62,19 @@ const App = () => {
         return doc ? doc.body.textContent || "" : html.replace(/<[^>]*>?/gm, '');
     };
 
+    // --- Helper: Simple Markdown (Bold only for AI) ---
+    const renderMarkdown = (text) => {
+        if (!text) return "";
+        // Replace **text** with <strong>text</strong>
+        const parts = text.split(/(\*\*.*?\*\*)/g);
+        return parts.map((part, i) => {
+            if (part.startsWith('**') && part.endsWith('**')) {
+                return <strong key={i} style={{ color: 'var(--text-primary)' }}>{part.slice(2, -2)}</strong>;
+            }
+            return part;
+        });
+    };
+
     // --- Theme Toggle ---
     useEffect(() => {
         document.body.setAttribute('data-theme', theme);
@@ -545,7 +558,7 @@ const App = () => {
                                         <i data-lucide="sparkles" style={{ width: '16px' }}></i> AI Briefing
                                     </h4>
                                     <div style={{ whiteSpace: 'pre-wrap' }}>
-                                        {selectedIncident.summary}
+                                        {renderMarkdown(selectedIncident.summary)}
                                     </div>
                                 </div>
                             )}
