@@ -100,15 +100,18 @@ def batch_summarize_incidents(incidents):
         try:
             batch_prompt = "Summarize the following Christian persecution incidents in India. For each incident, provide exactly 10 short, bulleted lines focusing on: What happened, Who was involved, Where, and Current status. Highlight important names or entities in bold.\n\n"
             
-            for i, inc in enumerate(incidents):
-                batch_prompt += f"--- INCIDENT {i+1} ---\nTITLE: {inc['title']}\nREPORT: {inc['description']}\n\n"
-                
-            batch_prompt += "\nReturn each summary separated by '===END_SUMMARY==='. Do not include the incident numbers or titles in your response, just the summaries."
+            print(f"--- PRE-AI BATCH PROMPT ({len(incidents)} items) ---")
+            print(batch_prompt)
+            print("-" * 50)
 
             response = client.models.generate_content(
                 model="gemini-2.0-flash",
                 contents=batch_prompt
             )
+            
+            print("--- POST-AI BATCH RESPONSE ---")
+            print(response.text)
+            print("-" * 50)
             
             summaries = response.text.split("===END_SUMMARY===")
             # Filter out empty or header/footer strings
