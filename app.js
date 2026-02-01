@@ -20,6 +20,10 @@ const App = () => {
     const [adminView, setAdminView] = useState('none'); // 'none', 'sources', 'incidents', 'users'
     const [loginError, setLoginError] = useState("");
 
+    // --- Visitor & Prayer State ---
+    const [visitorId, setVisitorId] = useState(localStorage.getItem('cprn-visitor-id'));
+    const [prayedIncidents, setPrayedIncidents] = useState(new Set());
+
     const PAGE_SIZE = 12;
 
     // --- Hash Utility (matching setup_admin.py) ---
@@ -83,6 +87,29 @@ const App = () => {
 
     const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
 
+    // --- Visitor & Connection Initialization ---
+    useEffect(() => {
+        // 1. Ensure Visitor ID exists
+        let vid = localStorage.getItem('cprn-visitor-id');
+        if (!vid) {
+            vid = crypto.randomUUID();
+            localStorage.setItem('cprn-visitor-id', vid);
+        }
+        setVisitorId(vid);
+
+        // 2. Fetch User's Prayers
+        const fetchUserPrayers = async () => {
+            const { data } = await supabaseClient
+                .from('incidents_prayers')
+                .select('incident_id')
+                .eq('visitor_id', vid);
+            if (data) {
+                setPrayedIncidents(new Set(data.map(p => p.incident_id)));
+            }
+        };
+        fetchUserPrayers();
+    }, []);
+
     // --- Supabase Interaction ---
     const fetchIncidents = useCallback(async (isNewSearch = false) => {
         setLoading(true);
@@ -137,6 +164,27 @@ const App = () => {
     const formatDate = (dateStr) => {
         const date = new Date(dateStr);
         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    };
+
+    // --- Prayer Handler ---
+    const handlePray = async (incidentId) => {
+        if (prayedIncidents.has(incidentId)) return;
+
+        const { error } = await supabaseClient
+            .from('incidents_prayers')
+            .insert([{ incident_id: incidentId, visitor_id: visitorId }]);
+
+        if (!error) {
+            setPrayedIncidents(prev => new Set([...prev, incidentId]));
+            // Optimistically update the UI count for the selected incident if it's open
+            if (selectedIncident && selectedIncident.id === incidentId) {
+                setSelectedIncident(prev => ({ ...prev, prayer_count: (prev.prayer_count || 0) + 1 }));
+            }
+            // Update the count in the main list
+            setIncidents(prev => prev.map(inc =>
+                inc.id === incidentId ? { ...inc, prayer_count: (inc.prayer_count || 0) + 1 } : inc
+            ));
+        }
     };
 
     // --- Sub-components for Admin ---
@@ -488,6 +536,10 @@ const App = () => {
                                     <p className="card-description">{cleanDesc}</p>
 
                                     <div className="card-footer">
+                                        <div className="prayer-badge">
+                                            <i data-lucide="heart" className={prayedIncidents.has(incident.id) ? "prayer-pulse" : ""} style={{ width: '14px', fill: prayedIncidents.has(incident.id) ? 'var(--accent-gold)' : 'none' }}></i>
+                                            {incident.prayer_count || 0} Praying
+                                        </div>
                                         <button className="btn-read-more" onClick={() => setSelectedIncident(incident)}>
                                             Details & Analysis
                                         </button>
@@ -546,6 +598,20 @@ const App = () => {
                         </div>
 
                         <div style={{ lineHeight: 1.8 }}>
+                            <div className="prayer-count-modal">
+                                <div className="prayer-count-number">{selectedIncident.prayer_count || 0}</div>
+                                <div className="prayer-count-label">People standing in prayer</div>
+                            </div>
+
+                            <button
+                                className={`btn-pray ${prayedIncidents.has(selectedIncident.id) ? 'active' : ''}`}
+                                onClick={() => handlePray(selectedIncident.id)}
+                                disabled={prayedIncidents.has(selectedIncident.id)}
+                            >
+                                <i data-lucide="heart" className={prayedIncidents.has(selectedIncident.id) ? "" : "prayer-pulse"}></i>
+                                {prayedIncidents.has(selectedIncident.id) ? "You have committed to pray" : "I will pray for this"}
+                            </button>
+
                             {selectedIncident.summary && (
                                 <div className="summary-section" style={{
                                     background: 'var(--bg-secondary)',

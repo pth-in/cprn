@@ -15,7 +15,8 @@ CREATE TABLE incidents (
     image_url TEXT,
     summary TEXT,
     -- similarity_hash helps in finding potential duplicates quickly
-    similarity_hash TEXT
+    similarity_hash TEXT,
+    prayer_count INTEGER DEFAULT 0
 );
 
 -- Index for faster sorting by date
@@ -59,5 +60,41 @@ INSERT INTO crawler_sources (name, url_or_handle, source_type) VALUES
 ('Google News (Attacks)', 'https://news.google.com/rss/search?q=%22Attack+on+Christians%22+India&hl=en-IN&gl=IN&ceid=IN:en', 'rss'),
 ('Google News (Anti-Conversion)', 'https://news.google.com/rss/search?q=%22Anti-conversion+laws%22+India&hl=en-IN&gl=IN&ceid=IN:en', 'rss');
 
+-- Table for Prayer Tracking (Unique by Visitor ID)
+CREATE TABLE incidents_prayers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ DEFAULT now(),
+    incident_id UUID NOT NULL REFERENCES incidents(id) ON DELETE CASCADE,
+    visitor_id UUID NOT NULL,
+    UNIQUE(incident_id, visitor_id)
+);
+
+-- Index for checking if a specific visitor has prayed for an incident
+CREATE INDEX idx_prayers_visitor ON incidents_prayers(visitor_id, incident_id);
+
+-- Trigger Function to sync prayer_count in incidents table
+CREATE OR REPLACE FUNCTION sync_prayer_count()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF (TG_OP = 'INSERT') THEN
+        UPDATE incidents 
+        SET prayer_count = prayer_count + 1 
+        WHERE id = NEW.incident_id;
+    ELSIF (TG_OP = 'DELETE') THEN
+        UPDATE incidents 
+        SET prayer_count = prayer_count - 1 
+        WHERE id = OLD.incident_id;
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger to increment/decrement counter automatically
+CREATE TRIGGER trg_sync_prayer_count
+AFTER INSERT OR DELETE ON incidents_prayers
+FOR EACH ROW
+EXECUTE FUNCTION sync_prayer_count();
+
 -- Comment for clarity
 COMMENT ON TABLE incidents IS 'Stores Christian persecution incidents in India, grouped by event.';
+COMMENT ON TABLE incidents_prayers IS 'Tracks unique prayer commitments by visitor ID.';

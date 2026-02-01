@@ -274,6 +274,7 @@ body {
     display: -webkit-box;
     -webkit-line-clamp: 4;
     -webkit-box-orient: vertical;
+    line-clamp: 4;
     overflow: hidden;
     line-height: 1.5;
 }
@@ -302,6 +303,96 @@ body {
 .btn-read-more:hover {
     background: var(--accent-gold);
     color: var(--bg-primary);
+}
+
+/* Prayer Tracking Styles */
+.prayer-badge {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--accent-gold);
+    background: var(--accent-gold-soft);
+    padding: 0.3rem 0.6rem;
+    border-radius: 6px;
+    transition: var(--transition);
+}
+
+.prayer-pulse {
+    animation: prayer-pulse 1.5s infinite;
+}
+
+@keyframes prayer-pulse {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+
+    50% {
+        transform: scale(1.1);
+        opacity: 0.8;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.btn-pray {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 1.2rem;
+    background: var(--bg-tertiary);
+    border: 2px solid var(--border-color);
+    border-radius: 12px;
+    color: var(--text-primary);
+    font-weight: 700;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: var(--transition);
+    margin-bottom: 2rem;
+}
+
+.btn-pray:hover {
+    border-color: var(--accent-gold);
+    background: var(--accent-gold-soft);
+    color: var(--accent-gold);
+}
+
+.btn-pray.active {
+    background: var(--accent-gold);
+    color: white;
+    border-color: var(--accent-gold);
+}
+
+.prayer-count-modal {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    background: var(--accent-gold-soft);
+    border-radius: 12px;
+    border: 1px dashed var(--accent-gold);
+}
+
+.prayer-count-number {
+    font-size: 2.5rem;
+    font-weight: 800;
+    color: var(--accent-gold);
+}
+
+.prayer-count-label {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 700;
+    color: var(--accent-gold);
 }
 
 /* Detail Modal */
