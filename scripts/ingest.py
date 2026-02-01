@@ -20,6 +20,33 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SECRET_KEY")
 GEMINI_API_KEYS = [k.strip() for k in os.environ.get("GEMINI_API_KEY", "").split(",") if k.strip()]
 
+class LogManager:
+    def __init__(self, supabase_client: Client):
+        self.supabase = supabase_client
+
+    def log(self, name, severity="INFO", metadata=None):
+        """Sends an ingestion event to Supabase."""
+        if not self.supabase:
+            return
+        try:
+            event = {
+                "event_type": "INGESTION",
+                "event_name": name,
+                "severity": severity,
+                "metadata": metadata or {}
+            }
+            self.supabase.table("system_events").insert(event).execute()
+        except Exception as e:
+            print(f"Logging Error: {e}")
+
+# Initialize Supabase
+supabase: Client = None
+if SUPABASE_URL and SUPABASE_KEY:
+    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# Initialize Logger
+logger = LogManager(supabase)
+
 class GeminiManager:
     def __init__(self, api_keys):
         self.api_keys = api_keys
@@ -63,6 +90,11 @@ class GeminiManager:
                     # Fallback for rate limits AND not found errors (in case a model list is stale)
                     if any(x in err_msg for x in ["429", "RESOURCE_EXHAUSTED", "404", "NOT_FOUND"]):
                         print(f"Model {model_name} unavailable ({err_msg}) with key ...{api_key[-4:]}. Trying next fallback...")
+                        logger.log("model_fallback", "WARNING", {
+                            "model": model_name,
+                            "error": str(e),
+                            "key_suffix": api_key[-4:]
+                        })
                         continue # Try next model
                     else:
                         # For other unexpected errors, don't bother falling back unless necessary
@@ -430,11 +462,13 @@ def is_duplicate_url(supabase, url):
     return result.data if result.data else False
 
 def fetch_and_ingest():
-    supabase = init_supabase()
-    
-    # Fetch Active Sources from DB
-    sources_result = supabase.table("crawler_sources").select("*").eq("is_active", True).execute()
-    db_sources = sources_result.data
+    logger.log("job_started", "INFO")
+    try:
+        supabase = init_supabase()
+        
+        # Fetch Active Sources from DB
+        sources_result = supabase.table("crawler_sources").select("*").eq("is_active", True).execute()
+        db_sources = sources_result.data
     
     all_raw_entries = []
     incidents_to_ingest = []
@@ -616,6 +650,12 @@ def fetch_and_ingest():
             if i + batch_size < len(incidents_to_ingest):
                 print(f"Cooling down for 10s before next batch...")
                 time.sleep(10)
+        
+        logger.log("job_completed", "INFO", {"incidents_added": len(incidents_to_ingest)})
+
+    except Exception as e:
+        print(f"CRITICAL ERROR in ingestion: {e}")
+        logger.log("job_failed_critical", "ERROR", {"error": str(e)})
 
 if __name__ == "__main__":
     if not SUPABASE_URL or not SUPABASE_KEY:

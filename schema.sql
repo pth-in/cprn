@@ -98,3 +98,19 @@ EXECUTE FUNCTION sync_prayer_count();
 -- Comment for clarity
 COMMENT ON TABLE incidents IS 'Stores Christian persecution incidents in India, grouped by event.';
 COMMENT ON TABLE incidents_prayers IS 'Tracks unique prayer commitments by visitor ID.';
+
+-- Table for Unified Analytics & System Logs
+CREATE TABLE system_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ DEFAULT now(),
+    event_type TEXT NOT NULL, -- 'FRONTEND', 'INGESTION', 'ERROR', 'ADMIN'
+    event_name TEXT NOT NULL, -- 'page_view', 'job_started', 'model_failure', etc.
+    visitor_id UUID, -- Optional, for frontend tracking
+    severity TEXT DEFAULT 'INFO', -- 'INFO', 'WARNING', 'ERROR'
+    metadata JSONB DEFAULT '{}' -- Flexible storage for error stacks, parameters, etc.
+);
+
+CREATE INDEX idx_system_events_type ON system_events(event_type);
+CREATE INDEX idx_system_events_created ON system_events(created_at DESC);
+
+COMMENT ON TABLE system_events IS 'Unified bucket for analytics, job logs, and error reports.';

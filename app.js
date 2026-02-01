@@ -34,6 +34,21 @@ const App = () => {
         return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
+    // --- Unified Logging Utility ---
+    const logEvent = useCallback(async (name, type = 'FRONTEND', severity = 'INFO', metadata = {}) => {
+        try {
+            await supabaseClient.from('system_events').insert([{
+                event_name: name,
+                event_type: type,
+                severity: severity,
+                visitor_id: localStorage.getItem('cprn-visitor-id'),
+                metadata: metadata
+            }]);
+        } catch (e) {
+            console.error("Logging failed:", e);
+        }
+    }, []);
+
     // --- Auth Handlers ---
     const handleLogin = async (username, password) => {
         const hash = await sha256(password);
@@ -107,8 +122,20 @@ const App = () => {
                 setPrayedIncidents(new Set(data.map(p => p.incident_id)));
             }
         };
-        fetchUserPrayers();
-    }, []);
+        if (vid) {
+            logEvent('page_view', 'FRONTEND', 'INFO', { url: window.location.href });
+        }
+    }, [logEvent]);
+
+    // --- Tracking Search ---
+    useEffect(() => {
+        if (searchQuery) {
+            const timer = setTimeout(() => {
+                logEvent('search_query', 'FRONTEND', 'INFO', { query: searchQuery });
+            }, 1000); // Log after 1s of typing
+            return () => clearTimeout(timer);
+        }
+    }, [searchQuery, logEvent]);
 
     // --- Supabase Interaction ---
     const fetchIncidents = useCallback(async (isNewSearch = false) => {
@@ -184,6 +211,9 @@ const App = () => {
             setIncidents(prev => prev.map(inc =>
                 inc.id === incidentId ? { ...inc, prayer_count: (inc.prayer_count || 0) + 1 } : inc
             ));
+            logEvent('prayer_committed', 'FRONTEND', 'INFO', { incident_id: incidentId });
+        } else {
+            logEvent('prayer_failed', 'ERROR', 'ERROR', { incident_id: incidentId, error: error.message });
         }
     };
 
@@ -425,6 +455,66 @@ const App = () => {
         );
     };
 
+    const AdminLogs = () => {
+        const [logs, setLogs] = useState([]);
+
+        const fetchLogs = async () => {
+            const { data } = await supabaseClient
+                .from('system_events')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(100);
+            setLogs(data || []);
+        };
+
+        useEffect(() => { fetchLogs(); }, []);
+
+        return (
+            <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                    <h3>System Operations & Analytics</h3>
+                    <button className="btn-icon" onClick={fetchLogs} title="Refresh Logs">
+                        <i data-lucide="refresh-cw"></i>
+                    </button>
+                </div>
+                <div className="admin-table-container">
+                    <table className="admin-table">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Type</th>
+                                <th>Event</th>
+                                <th>Details</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {logs.map(log => (
+                                <tr key={log.id}>
+                                    <td style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                                        {new Date(log.created_at).toLocaleString()}
+                                    </td>
+                                    <td>
+                                        <span className="badge" style={{
+                                            background: log.severity === 'ERROR' ? 'var(--accent-red)' :
+                                                log.severity === 'WARNING' ? 'orange' : 'var(--bg-tertiary)',
+                                            color: log.severity === 'ERROR' ? 'white' : 'inherit'
+                                        }}>
+                                            {log.event_type}
+                                        </span>
+                                    </td>
+                                    <td style={{ fontWeight: 600 }}>{log.event_name}</td>
+                                    <td style={{ fontSize: '0.8rem', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        {JSON.stringify(log.metadata)}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
+    };
+
     const Login = () => {
         const [u, setU] = useState("");
         const [p, setP] = useState("");
@@ -540,7 +630,10 @@ const App = () => {
                                             <i data-lucide="heart" className={prayedIncidents.has(incident.id) ? "prayer-pulse" : ""} style={{ width: '14px', fill: prayedIncidents.has(incident.id) ? 'var(--accent-gold)' : 'none' }}></i>
                                             {incident.prayer_count || 0} Praying
                                         </div>
-                                        <button className="btn-read-more" onClick={() => setSelectedIncident(incident)}>
+                                        <button className="btn-read-more" onClick={() => {
+                                            setSelectedIncident(incident);
+                                            logEvent('incident_view', 'FRONTEND', 'INFO', { incident_id: incident.id, title: incident.title });
+                                        }}>
                                             Details & Analysis
                                         </button>
                                     </div>
@@ -561,6 +654,9 @@ const App = () => {
                         <div className={`nav-item ${adminView === 'users' ? 'active' : ''}`} onClick={() => setAdminView('users')}>
                             <i data-lucide="users" style={{ width: '14px', marginRight: '0.5rem' }}></i> Team
                         </div>
+                        <div className={`nav-item ${adminView === 'logs' ? 'active' : ''}`} onClick={() => setAdminView('logs')}>
+                            <i data-lucide="activity" style={{ width: '14px', marginRight: '0.5rem' }}></i> System Logs
+                        </div>
                         <div className="nav-item" onClick={() => setAdminView('none')} style={{ marginLeft: 'auto' }}>
                             View Public Portal
                         </div>
@@ -570,6 +666,7 @@ const App = () => {
                         {adminView === 'sources' && <AdminSources />}
                         {adminView === 'incidents' && <AdminIncidents />}
                         {adminView === 'users' && <AdminUsers />}
+                        {adminView === 'logs' && <AdminLogs />}
                     </div>
                 </div>
             )}
