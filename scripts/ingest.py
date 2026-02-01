@@ -111,7 +111,8 @@ def batch_summarize_incidents(incidents):
             )
             
             summaries = response.text.split("===END_SUMMARY===")
-            summaries = [s.strip() for s in summaries if s.strip()]
+            # Filter out empty or header/footer strings
+            summaries = [s.strip() for s in summaries if len(s.strip()) > 20]
             
             while len(summaries) < len(incidents):
                 summaries.append("Summary unavailable.")
@@ -177,7 +178,7 @@ def fetch_social_sentinels(handles):
                                         image_url = f"{mirror}{image_url}"
 
                             entries.append({
-                                "title": f"Social Update: {entry.title[:100]}...",
+                                "title": f"Social Update: {entry.title}",
                                 "link": entry.link,
                                 "description": entry.get("summary", entry.get("description", "")),
                                 "published": entry.get("published", datetime.now().isoformat()),
@@ -277,10 +278,18 @@ def fetch_and_ingest():
                     if l.get('rel') == 'enclosure' and 'image' in l.get('type', ''):
                         image_url = l.get('href')
             
+            # Try to find the fullest description possible
+            content = entry.get("summary", entry.get("description", ""))
+            if hasattr(entry, 'content') and entry.content:
+                # content is usually a list of dicts with 'value' and 'type'
+                full_content = entry.content[0].get('value', '')
+                if len(full_content) > len(content):
+                    content = full_content
+            
             all_raw_entries.append({
                 "title": entry.title,
                 "link": entry.link,
-                "description": entry.get("summary", entry.get("description", "")),
+                "description": content,
                 "published": entry.get("published", entry.get("updated", datetime.now().isoformat())),
                 "source_name": feed_info['name'],
                 "image_url": image_url
