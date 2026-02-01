@@ -136,7 +136,8 @@ INDIAN_LOCATIONS = {
 # Strict Identity Keywords (Must be Christian Context)
 IDENTITY_KEYWORDS = [
     "pastor", "priest", "church", "christian", "believer", "worship", "ministry",
-    "parish", "nun", "bishop", "prayer meeting", "believers", "missionary", "jesuit"
+    "parish", "nun", "bishop", "prayer meeting", "believers", "missionary", "jesuit",
+    "apologetics", "apologist"
 ]
 
 # Action/Persecution Keywords (Must indicate an incident)

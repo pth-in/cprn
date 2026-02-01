@@ -92,6 +92,7 @@ const App = () => {
         let query = supabaseClient
             .from('incidents')
             .select('*', { count: 'exact' })
+            .gte('incident_date', '2026-01-01')
             .order('incident_date', { ascending: false })
             .range(start, end);
 
@@ -563,14 +564,7 @@ const App = () => {
                                 </div>
                             )}
 
-                            <h4 style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <i data-lucide="file-text" style={{ width: '16px' }}></i> Full Report
-                            </h4>
-                            <p className="modal-description" style={{ whiteSpace: 'pre-wrap', marginBottom: '2rem', color: 'var(--text-primary)' }}>
-                                {stripHtml(selectedIncident.description)}
-                            </p>
-
-                            <h4 style={{ marginBottom: '1rem', color: 'var(--accent-gold)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <h4 style={{ color: 'var(--accent-gold)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <i data-lucide="check-circle" style={{ width: '16px' }}></i> Verified Reporting Sources:
                             </h4>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
