@@ -469,6 +469,17 @@ def fetch_and_ingest():
     
     for entry_data in all_raw_entries:
         try:
+            # 1. Date Filter (Check this FIRST to avoid unnecessary scraping)
+            pub_date_str = entry_data.get("published", datetime.now().isoformat())
+            try:
+                incident_date = date_parser.parse(pub_date_str)
+            except Exception:
+                incident_date = datetime.now()
+            
+            if incident_date.year < 2026:
+                print(f"Skipping historical entry ({incident_date.year}): {entry_data['title'][:50]}...")
+                continue
+
             title = clean_title(entry_data['title'])
             link = entry_data['link']
             # Sanitize description (remove HTML)
@@ -491,13 +502,13 @@ def fetch_and_ingest():
             if not "india" in full_text:
                 continue
             
-            # 1. Identity Check (Who?)
+            # 2. Identity Check (Who?)
             has_identity = any(kw in full_text for kw in IDENTITY_KEYWORDS)
             
-            # 2. Persecution Check (What happened?)
+            # 3. Persecution Check (What happened?)
             has_persecution = any(kw in full_text for kw in PERSECUTION_KEYWORDS)
             
-            # 3. Negative Check (Is it just general news?)
+            # 4. Negative Check (Is it just general news?)
             has_negative = any(kw in full_text for kw in NEGATIVE_KEYWORDS)
 
             if not (has_identity and has_persecution) or has_negative:
@@ -506,14 +517,6 @@ def fetch_and_ingest():
                     pass # Keep it
                 else:
                     continue
-
-            pub_date_str = entry_data.get("published", datetime.now().isoformat())
-            incident_date = date_parser.parse(pub_date_str)
-            
-            # Real-time Filter: Only 2026 or later
-            if incident_date.year < 2026:
-                print(f"Skipping historical entry ({incident_date.year}): {title[:50]}...")
-                continue
 
             # 1. Check if URL already exists anywhere
             # We can use a simple query for this since we want to avoid re-processing the same link
