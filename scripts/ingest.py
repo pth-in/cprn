@@ -82,14 +82,18 @@ gemini_manager = None
 if GEMINI_API_KEYS:
     gemini_manager = GeminiManager(GEMINI_API_KEYS)
 
-# Working Nitter Mirrors
+# Working RSS Proxy Mirrors (X/Twitter and FB via RSS-Bridge)
 NITTER_MIRRORS = [
     "https://nitter.poast.org",
     "https://nitter.privacydev.net",
-    "https://xcancel.com",
     "https://nitter.uni-sonia.com",
-    "https://nitter.perennialte.ch",
-    "https://nitter.projectsegfau.lt"
+    "https://nitter.perennialte.ch"
+]
+
+RSS_BRIDGE_INSTANCES = [
+    "https://rss-bridge.org/bridge01",
+    "https://bridge.suumitsu.eu",
+    "https://rssbridge.pw"
 ]
 
 # Browser-like headers to avoid 403s
@@ -309,47 +313,61 @@ def extract_location(title, description):
             
     return "India" # Fallback
 
-def fetch_social_sentinels(handles):
-    """Fetches updates from X sentinels using Nitter mirrors."""
+def fetch_social_sentinels(sources):
+    """Fetches updates from social sentinels (X/FB) via RSS-Bridge, RSSHub, or Nitter mirrors."""
     entries = []
-    for handle in handles:
+    for source in sources:
+        raw_val = source['url_or_handle']
+        name = source['name']
+        
+        # Determine candidate RSS URLs
+        if raw_val.startswith('http'):
+            # Direct RSS link provided (e.g. RSS-Bridge or RSSHub)
+            rss_urls = [raw_val]
+        else:
+            # Handle provided, try Nitter mirrors for X
+            rss_urls = [f"{mirror}/{raw_val}/rss" for mirror in NITTER_MIRRORS]
+        
         success = False
-        for mirror in NITTER_MIRRORS:
-            rss_url = f"{mirror}/{handle}/rss"
+        for rss_url in rss_urls:
             print(f"Trying social feed: {rss_url}")
             try:
                 # Use a small timeout to skip slow mirrors quickly
-                response = requests.get(rss_url, timeout=5, headers=DEFAULT_HEADERS)
+                response = requests.get(rss_url, timeout=7, headers=DEFAULT_HEADERS)
                 if response.status_code == 200:
                     feed = feedparser.parse(response.text)
                     if feed.entries:
-                        print(f"Successfully fetched {len(feed.entries)} posts from @{handle} via {mirror}")
+                        print(f"Successfully fetched {len(feed.entries)} posts from {name} via {rss_url}")
                         for entry in feed.entries:
-                            # Try to find image in entry (Nitter often puts it in the description as an <img> tag)
+                            # Try to find image in entry (Nitter/RSS-Bridge often put it in the description as an <img> tag)
                             image_url = None
-                            if "summary" in entry:
-                                soup = BeautifulSoup(entry.summary, 'html.parser')
+                            summary_text = entry.get("summary", entry.get("description", ""))
+                            if summary_text:
+                                soup = BeautifulSoup(summary_text, 'html.parser')
                                 img = soup.find('img')
                                 if img:
                                     image_url = img.get('src')
                                     # Handle relative URLs if necessary
                                     if image_url and image_url.startswith('/'):
-                                        image_url = f"{mirror}{image_url}"
+                                        # Extract base URL from mirror
+                                        base = re.match(r'(https?://[^/]+)', rss_url).group(1)
+                                        image_url = f"{base}{image_url}"
 
                             entries.append({
                                 "title": f"Social Update: {entry.title}",
                                 "link": entry.link,
-                                "description": entry.get("summary", entry.get("description", "")),
-                                "published": entry.get("published", datetime.now().isoformat()),
-                                "source_name": f"X (@{handle})",
+                                "description": summary_text,
+                                "published": entry.get("published", datetime.now(timezone.utc).isoformat()),
+                                "source_name": f"Social ({name})",
                                 "image_url": image_url
                             })
                         success = True
                         break
             except Exception as e:
+                print(f"Social Fetch Error ({rss_url}): {e}")
                 continue # Try next mirror
         if not success:
-            print(f"Warning: Could not fetch @{handle} from any mirror.")
+            print(f"Warning: Could not fetch {name} from any mirror/URL.")
     return entries
 
 def scrape_efi_news():
@@ -465,8 +483,8 @@ def fetch_and_ingest():
     all_raw_entries.extend(efi_entries)
     
     # 3. Fetch Social Sentinels from DB
-    social_handles = [s['url_or_handle'] for s in db_sources if s['source_type'] == 'social']
-    social_entries = fetch_social_sentinels(social_handles)
+    social_sources = [s for s in db_sources if s['source_type'] == 'social']
+    social_entries = fetch_social_sentinels(social_sources)
     all_raw_entries.extend(social_entries)
     
     # Efficiency Settings
