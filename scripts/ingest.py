@@ -469,6 +469,11 @@ def fetch_and_ingest():
     social_entries = fetch_social_sentinels(social_handles)
     all_raw_entries.extend(social_entries)
     
+    # Efficiency Settings
+    DAYS_LOOKBACK = 3
+    threshold_date = datetime.now() - timedelta(days=DAYS_LOOKBACK)
+    print(f"Daily Run: Focusing on incidents since {threshold_date.strftime('%Y-%m-%d')}")
+
     for entry_data in all_raw_entries:
         try:
             # 1. Date Filter (Check this FIRST to avoid unnecessary scraping)
@@ -478,12 +483,19 @@ def fetch_and_ingest():
             except Exception:
                 incident_date = datetime.now()
             
-            if incident_date.year < 2026:
-                print(f"Skipping historical entry ({incident_date.year}): {entry_data['title'][:50]}...")
+            # Use Sliding Window (3 days) OR 2026 Hard Floor
+            if incident_date < threshold_date or incident_date.year < 2026:
+                # print(f"Skipping old/historical entry: {entry_data['title'][:50]}...")
+                continue
+
+            # 2. Early URL Check (Avoid processing articles we already have)
+            link = entry_data['link']
+            existing_by_url = supabase.table("incidents").select("id").filter("sources", "cs", f'[{{"url": "{link}"}}]').execute()
+            if existing_by_url.data:
+                # print(f"URL already in DB, skipping: {entry_data['title'][:50]}...")
                 continue
 
             title = clean_title(entry_data['title'])
-            link = entry_data['link']
             # Sanitize description (remove HTML)
             description = sanitize_text(entry_data['description'])
             
@@ -520,14 +532,7 @@ def fetch_and_ingest():
                 else:
                     continue
 
-            # 1. Check if URL already exists anywhere
-            # We can use a simple query for this since we want to avoid re-processing the same link
-            existing_by_url = supabase.table("incidents").select("id").filter("sources", "cs", f'[{{"url": "{link}"}}]').execute()
-            if existing_by_url.data:
-                print(f"URL exists, skipping: {title[:50]}...")
-                continue
-
-            # 2. Look for similar incidents in the last 72 hours
+            # 3. Look for similar incidents in the last 72 hours
             three_days_ago = (datetime.now() - timedelta(days=3)).isoformat()
             recent_incidents = supabase.table("incidents").select("*").gt("incident_date", three_days_ago).execute()
             
