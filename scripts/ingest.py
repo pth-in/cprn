@@ -137,6 +137,42 @@ def batch_summarize_incidents(incidents):
     
     return [inc['description'][:500] + "..." for inc in incidents]
 
+def deep_scrape_article(url):
+    """Fetches the full article body from a given URL."""
+    if not url or url == "#": return ""
+    print(f"Deep scraping: {url}")
+    try:
+        response = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+        
+        # Remove noisy elements
+        for script in soup(["script", "style", "nav", "footer", "header", "aside"]):
+            script.decompose()
+            
+        # Try to find the main content block (common news tags)
+        content_selectors = [
+            'div.entry-content', 'div.article-body', 'div.story-content', 
+            'article', 'main', 'div.post-content'
+        ]
+        
+        main_content = ""
+        for selector in content_selectors:
+            target = soup.select_one(selector)
+            if target:
+                main_content = target.get_text(separator=' ', strip=True)
+                break
+        
+        if not main_content:
+            # Fallback: Just take all paragraphs
+            paragraphs = soup.find_all('p')
+            main_content = ' '.join([p.get_text(strip=True) for p in paragraphs if len(p.get_text()) > 20])
+            
+        return main_content[:5000] # Limit to 5k chars for prompt efficiency
+    except Exception as e:
+        print(f"Deep Scrape Error ({url}): {e}")
+        return ""
+
 def sanitize_text(text):
     """Removes HTML tags and extra whitespace."""
     if not text: return ""
@@ -317,6 +353,12 @@ def fetch_and_ingest():
             link = entry_data['link']
             # Sanitize description (remove HTML)
             description = sanitize_text(entry_data['description'])
+            
+            # DEEP SCRAPE: If description is too short, fetch the actual page
+            if len(description) < 500 and link and not "twitter.com" in link and not "xcancel.com" in link:
+                full_text = deep_scrape_article(link)
+                if len(full_text) > len(description):
+                    description = full_text
             
             # Extract specific location
             location = extract_location(title, description)
