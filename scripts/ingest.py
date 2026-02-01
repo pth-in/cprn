@@ -4,7 +4,7 @@ import time
 import re
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from supabase import create_client, Client
 from dateutil import parser as date_parser
 from thefuzz import fuzz
@@ -471,17 +471,20 @@ def fetch_and_ingest():
     
     # Efficiency Settings
     DAYS_LOOKBACK = 3
-    threshold_date = datetime.now() - timedelta(days=DAYS_LOOKBACK)
+    threshold_date = datetime.now(timezone.utc) - timedelta(days=DAYS_LOOKBACK)
     print(f"Daily Run: Focusing on incidents since {threshold_date.strftime('%Y-%m-%d')}")
 
     for entry_data in all_raw_entries:
         try:
             # 1. Date Filter (Check this FIRST to avoid unnecessary scraping)
-            pub_date_str = entry_data.get("published", datetime.now().isoformat())
+            pub_date_str = entry_data.get("published", datetime.now(timezone.utc).isoformat())
             try:
                 incident_date = date_parser.parse(pub_date_str)
+                # Ensure awareness for comparison
+                if incident_date.tzinfo is None:
+                    incident_date = incident_date.replace(tzinfo=timezone.utc)
             except Exception:
-                incident_date = datetime.now()
+                incident_date = datetime.now(timezone.utc)
             
             # Use Sliding Window (3 days) OR 2026 Hard Floor
             if incident_date < threshold_date or incident_date.year < 2026:
