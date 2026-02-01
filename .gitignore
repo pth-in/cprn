@@ -9,3 +9,7 @@ plans.md
 .gemini/
 .agent/
 brain/
+# Test & Logs
+test/*.txt
+test/__pycache__/
+test/*.pyc

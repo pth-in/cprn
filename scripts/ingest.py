@@ -9,28 +9,96 @@ from supabase import create_client, Client
 from dateutil import parser as date_parser
 from thefuzz import fuzz
 from google import genai
+from dotenv import load_dotenv
+import random
+
+# Load environment variables
+load_dotenv()
 
 # Configuration
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SECRET_KEY")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+GEMINI_API_KEYS = [k.strip() for k in os.environ.get("GEMINI_API_KEY", "").split(",") if k.strip()]
 
-# Configure Gemini
-client = None
-if GEMINI_API_KEY:
-    try:
-        # Use v1 to avoid v1beta restrictions
-        client = genai.Client(api_key=GEMINI_API_KEY, http_options={'api_version': 'v1'})
-    except Exception as e:
-        print(f"Error initializing Gemini Client: {e}")
+class GeminiManager:
+    def __init__(self, api_keys):
+        self.api_keys = api_keys
+        self.current_key_index = 0
+        self.models = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-flash-latest", "gemini-1.5-flash"]
+        self.current_model_index = 0
+        self.clients = {} # Cache clients for each key
+        
+    def get_client(self, api_key):
+        if api_key not in self.clients:
+            try:
+                # Removing api_version='v1' to allow access to more models
+                self.clients[api_key] = genai.Client(api_key=api_key)
+            except Exception as e:
+                print(f"Error initializing Gemini Client for key ...{api_key[-4:]}: {e}")
+                return None
+        return self.clients[api_key]
 
-# Working Nitter Mirrors (Fallbacks)
+    def call_with_fallback(self, func, *args, **kwargs):
+        """Executes a function with model fallback and key rotation."""
+        last_exception = None
+        
+        # Try each key
+        for _ in range(len(self.api_keys)):
+            api_key = self.api_keys[self.current_key_index]
+            client = self.get_client(api_key)
+            
+            if not client:
+                self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
+                continue
+
+            # Try each model starting from the best one
+            for model_index in range(len(self.models)):
+                model_name = self.models[model_index]
+                try:
+                    return func(client, model_name, *args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+                    err_msg = str(e).upper()
+                    if "429" in err_msg or "RESOURCE_EXHAUSTED" in err_msg:
+                        print(f"Model {model_name} rate limited with key ...{api_key[-4:]}. Trying next fallback...")
+                        continue # Try next model
+                    else:
+                        # For other errors (like 400 Bad Request), don't bother falling back
+                        print(f"Gemini Error ({model_name}): {e}")
+                        raise e
+            
+            # If all models failed for this key, try next key
+            print(f"All models exhausted for key ...{api_key[-4:]}. Rotating key...")
+            self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
+
+        if last_exception:
+            raise last_exception
+        raise Exception("No valid Gemini API keys or models available.")
+
+# Initialize Gemini Manager
+gemini_manager = None
+if GEMINI_API_KEYS:
+    gemini_manager = GeminiManager(GEMINI_API_KEYS)
+
+# Working Nitter Mirrors
 NITTER_MIRRORS = [
     "https://nitter.poast.org",
     "https://nitter.privacydev.net",
     "https://xcancel.com",
-    "https://nitter.cz"
+    "https://nitter.uni-sonia.com",
+    "https://nitter.perennialte.ch",
+    "https://nitter.projectsegfau.lt"
 ]
+
+# Browser-like headers to avoid 403s
+DEFAULT_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "DNT": "1",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1"
+}
 
 # Indian State and Major Region keywords
 INDIAN_LOCATIONS = {
@@ -91,58 +159,103 @@ NEGATIVE_KEYWORDS = [
 def init_supabase() -> Client:
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 def batch_summarize_incidents(incidents):
-    """Summarizes a batch of incidents in a single Gemini call."""
-    if not client or not incidents:
+    """Summarizes a batch of incidents using GeminiManager with fallback and rotation."""
+    if not gemini_manager or not incidents:
         return [sanitize_text(inc['description'])[:500] + "..." for inc in incidents]
 
-    retries = 3
-    for attempt in range(retries):
-        try:
-            batch_prompt = "Summarize the following Christian persecution incidents in India. For each incident, provide exactly 10 short, bulleted lines focusing on: What happened, Who was involved, Where, and Current status. Highlight important names or entities in bold.\n\n"
-            for i, inc in enumerate(incidents):
-                batch_prompt += f"--- INCIDENT {i+1} ---\nTITLE: {inc['title']}\nREPORT: {inc['description']}\n\n"
-                
-            batch_prompt += "\nReturn each summary separated by '===END_SUMMARY==='. Do not include the incident numbers or titles in your response, just the summaries."
+    batch_prompt = "Summarize the following Christian persecution incidents in India. For each incident, provide exactly 10 short, bulleted lines focusing on: What happened, Who was involved, Where, and Current status. Highlight important names or entities in bold.\n\n"
+    for i, inc in enumerate(incidents):
+        batch_prompt += f"--- INCIDENT {i+1} ---\nTITLE: {inc['title']}\nREPORT: {inc['description']}\n\n"
+        
+    batch_prompt += "\nReturn each summary separated by '===END_SUMMARY==='. Do not include the incident numbers or titles in your response, just the summaries."
 
-            print(f"--- PRE-AI BATCH PROMPT ({len(incidents)} items) ---")
-            print(batch_prompt)
-            print("-" * 50)
+    def do_summarize(client, model_name, prompt):
+        print(f"--- PRE-AI BATCH PROMPT ({len(incidents)} items, model: {model_name}) ---")
+        # print(prompt) # Truncated for cleaner logs
+        print("-" * 50)
+        
+        # RPM Throttle: Ensure at least 4 seconds between calls (approx 15 RPM)
+        # We'll use a globally shared timestamp if needed, but for now simple sleep
+        time.sleep(random.uniform(2, 5)) 
 
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=batch_prompt
-            )
-            
-            print("--- POST-AI BATCH RESPONSE ---")
-            print(response.text)
-            print("-" * 50)
-            
-            summaries = response.text.split("===END_SUMMARY===")
-            # Filter out empty or header/footer strings
-            summaries = [s.strip() for s in summaries if len(s.strip()) > 20]
-            
-            while len(summaries) < len(incidents):
-                summaries.append("Summary unavailable.")
-                
-            return summaries[:len(incidents)]
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt
+        )
+        
+        print(f"--- POST-AI BATCH RESPONSE ({model_name}) ---")
+        # print(response.text)
+        print("-" * 50)
+        
+        summaries = response.text.split("===END_SUMMARY===")
+        summaries = [s.strip() for s in summaries if len(s.strip()) > 20]
+        return summaries
 
-        except Exception as e:
-            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                wait_time = (5 ** attempt) + 10
-                print(f"Batch rate limited (429). Retrying in {wait_time}s... (Attempt {attempt+1}/{retries})")
-                time.sleep(wait_time)
-            else:
-                print(f"Batch Gemini Error: {e}")
-                break
+    try:
+        summaries = gemini_manager.call_with_fallback(do_summarize, batch_prompt)
+        
+        while len(summaries) < len(incidents):
+            summaries.append("Summary unavailable due to processing error.")
+            
+        return summaries[:len(incidents)]
+
+    except Exception as e:
+        print(f"Batch Gemini Strategy Failed: {e}")
+        return [sanitize_text(inc['description'])[:500] + "..." for inc in incidents]
+
+def resolve_url(url):
+    """Follows redirects to get the direct article link, especially for Google News and shorteners."""
+    if not url or url == "#": return url
     
-    return [inc['description'][:500] + "..." for inc in incidents]
+    # Check if it's a known redirector/shortener
+    redirectors = ["news.google.com", "t.co", "bit.ly", "tinyurl.com"]
+    if not any(r in url for r in redirectors):
+        return url
+        
+    print(f"Resolving redirect: {url}")
+    try:
+        # Use a fresh session to follow redirects
+        session = requests.Session()
+        response = session.get(url, headers=DEFAULT_HEADERS, timeout=10, allow_redirects=True)
+        final_url = response.url
+        if final_url != url:
+            print(f"Resolved to: {final_url}")
+            return final_url
+            
+        # Specific logic for Google News meta refresh
+        if "google.com" in final_url:
+            soup = BeautifulSoup(response.text, "html.parser")
+            meta_refresh = soup.find("meta", attrs={"http-equiv": "refresh"})
+            if meta_refresh and "url=" in meta_refresh.get("content", "").lower():
+                new_url = meta_refresh["content"].lower().split("url=")[1].strip()
+                print(f"Meta refresh resolved to: {new_url}")
+                return new_url
+    except Exception as e:
+        print(f"Error resolving redirect: {e}")
+        
+    return url
 
 def deep_scrape_article(url):
     """Fetches the full article body from a given URL."""
     if not url or url == "#": return ""
+    
+    # Resolve redirects first (especially for Google News)
+    url = resolve_url(url)
+    
     print(f"Deep scraping: {url}")
     try:
-        response = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+        # Use full headers to avoid 403s
+        response = requests.get(url, timeout=15, headers=DEFAULT_HEADERS)
+        
+        # If blocked (403/401), try Jina Reader as a bypass
+        if response.status_code in [403, 401]:
+            print(f"Direct access blocked ({response.status_code}). Trying Jina Reader...")
+            jina_url = f"https://r.jina.ai/{url}"
+            jina_resp = requests.get(jina_url, timeout=20)
+            if jina_resp.status_code == 200:
+                print("Jina Reader success!")
+                return jina_resp.text[:5000]
+                
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
         
@@ -203,7 +316,7 @@ def fetch_social_sentinels(handles):
             print(f"Trying social feed: {rss_url}")
             try:
                 # Use a small timeout to skip slow mirrors quickly
-                response = requests.get(rss_url, timeout=5)
+                response = requests.get(rss_url, timeout=5, headers=DEFAULT_HEADERS)
                 if response.status_code == 200:
                     feed = feedparser.parse(response.text)
                     if feed.entries:
@@ -238,10 +351,10 @@ def fetch_social_sentinels(handles):
 
 def scrape_efi_news():
     """Scrapes the latest news from EFI website."""
-    url = "https://efionline.org/news-events/"
+    url = "https://efionline.org/category/news/"
     print(f"Scraping EFI News: {url}")
     try:
-        response = requests.get(url, timeout=15)
+        response = requests.get(url, timeout=15, headers=DEFAULT_HEADERS)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
         
@@ -309,7 +422,13 @@ def fetch_and_ingest():
     rss_sources = [s for s in db_sources if s['source_type'] == 'rss']
     for feed_info in rss_sources:
         print(f"Fetching RSS: {feed_info['name']}")
-        feed = feedparser.parse(feed_info['url_or_handle'])
+        try:
+            response = requests.get(feed_info['url_or_handle'], headers=DEFAULT_HEADERS, timeout=15)
+            response.raise_for_status()
+            feed = feedparser.parse(response.text)
+        except Exception as e:
+            print(f"Error fetching RSS {feed_info['name']}: {e}")
+            continue
         for entry in feed.entries:
             # Try to find image URL in RSS extensions
             image_url = None
