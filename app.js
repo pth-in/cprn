@@ -1,6 +1,6 @@
 const { useState, useEffect, useCallback, useRef } = React;
 
-const SUPABASE_URL = "https://tvbmjectzcowsjzidumq.supabase.co";
+const SUPABASE_URL = "https://tvbmjectzcowsjzidumg.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_NFMG2axuLqnH2AbPUjR7OA_L70ojzSM";
 
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
