@@ -470,188 +470,188 @@ def fetch_and_ingest():
         sources_result = supabase.table("crawler_sources").select("*").eq("is_active", True).execute()
         db_sources = sources_result.data
     
-    all_raw_entries = []
-    incidents_to_ingest = []
+        all_raw_entries = []
+        incidents_to_ingest = []
     
-    # 1. Fetch RSS Feeds from DB
-    rss_sources = [s for s in db_sources if s['source_type'] == 'rss']
-    for feed_info in rss_sources:
-        print(f"Fetching RSS: {feed_info['name']}")
-        try:
-            response = requests.get(feed_info['url_or_handle'], headers=DEFAULT_HEADERS, timeout=15)
-            response.raise_for_status()
-            feed = feedparser.parse(response.text)
-        except Exception as e:
-            print(f"Error fetching RSS {feed_info['name']}: {e}")
-            continue
-        for entry in feed.entries:
-            # Try to find image URL in RSS extensions
-            image_url = None
-            # Common RSS image tags
-            if hasattr(entry, 'media_content'):
-                image_url = entry.media_content[0].get('url')
-            elif hasattr(entry, 'links'):
-                for l in entry.links:
-                    if l.get('rel') == 'enclosure' and 'image' in l.get('type', ''):
-                        image_url = l.get('href')
-            
-            # Try to find the fullest description possible
-            content = entry.get("summary", entry.get("description", ""))
-            if hasattr(entry, 'content') and entry.content:
-                # content is usually a list of dicts with 'value' and 'type'
-                full_content = entry.content[0].get('value', '')
-                if len(full_content) > len(content):
-                    content = full_content
-            
-            all_raw_entries.append({
-                "title": entry.title,
-                "link": entry.link,
-                "description": content,
-                "published": entry.get("published", entry.get("updated", datetime.now().isoformat())),
-                "source_name": feed_info['name'],
-                "image_url": image_url
-            })
-            
-    # 2. Fetch NGO Scraped Data (EFI is currently special-cased logic)
-    efi_entries = scrape_efi_news()
-    all_raw_entries.extend(efi_entries)
-    
-    # 3. Fetch Social Sentinels from DB
-    social_sources = [s for s in db_sources if s['source_type'] == 'social']
-    social_entries = fetch_social_sentinels(social_sources)
-    all_raw_entries.extend(social_entries)
-    
-    # Efficiency Settings
-    DAYS_LOOKBACK = 3
-    threshold_date = datetime.now(timezone.utc) - timedelta(days=DAYS_LOOKBACK)
-    print(f"Daily Run: Focusing on incidents since {threshold_date.strftime('%Y-%m-%d')}")
-
-    for entry_data in all_raw_entries:
-        try:
-            # 1. Date Filter (Check this FIRST to avoid unnecessary scraping)
-            pub_date_str = entry_data.get("published", datetime.now(timezone.utc).isoformat())
+        # 1. Fetch RSS Feeds from DB
+        rss_sources = [s for s in db_sources if s['source_type'] == 'rss']
+        for feed_info in rss_sources:
+            print(f"Fetching RSS: {feed_info['name']}")
             try:
-                incident_date = date_parser.parse(pub_date_str)
-                # Ensure awareness for comparison
-                if incident_date.tzinfo is None:
-                    incident_date = incident_date.replace(tzinfo=timezone.utc)
-            except Exception:
-                incident_date = datetime.now(timezone.utc)
-            
-            # Use Sliding Window (3 days) OR 2026 Hard Floor
-            if incident_date < threshold_date or incident_date.year < 2026:
-                # print(f"Skipping old/historical entry: {entry_data['title'][:50]}...")
+                response = requests.get(feed_info['url_or_handle'], headers=DEFAULT_HEADERS, timeout=15)
+                response.raise_for_status()
+                feed = feedparser.parse(response.text)
+            except Exception as e:
+                print(f"Error fetching RSS {feed_info['name']}: {e}")
                 continue
-
-            # 2. Early URL Check (Avoid processing articles we already have)
-            link = entry_data['link']
-            existing_by_url = supabase.table("incidents").select("id").filter("sources", "cs", f'[{{"url": "{link}"}}]').execute()
-            if existing_by_url.data:
-                # print(f"URL already in DB, skipping: {entry_data['title'][:50]}...")
-                continue
-
-            title = clean_title(entry_data['title'])
-            # Sanitize description (remove HTML)
-            description = sanitize_text(entry_data['description'])
+            for entry in feed.entries:
+                # Try to find image URL in RSS extensions
+                image_url = None
+                # Common RSS image tags
+                if hasattr(entry, 'media_content'):
+                    image_url = entry.media_content[0].get('url')
+                elif hasattr(entry, 'links'):
+                    for l in entry.links:
+                        if l.get('rel') == 'enclosure' and 'image' in l.get('type', ''):
+                            image_url = l.get('href')
             
-            # DEEP SCRAPE: If description is too short, fetch the actual page
-            if len(description) < 500 and link and not "twitter.com" in link and not "xcancel.com" in link:
-                full_text = deep_scrape_article(link)
-                if len(full_text) > len(description):
-                    description = full_text
+                # Try to find the fullest description possible
+                content = entry.get("summary", entry.get("description", ""))
+                if hasattr(entry, 'content') and entry.content:
+                    # content is usually a list of dicts with 'value' and 'type'
+                    full_content = entry.content[0].get('value', '')
+                    if len(full_content) > len(content):
+                        content = full_content
             
-            # Extract specific location
-            location = extract_location(title, description)
-            
-            # Image URL from source
-            image_url = entry_data.get('image_url')
-                
-            # India?
-            full_text = f"{title} {description}".lower()
-            if not "india" in full_text:
-                continue
-            
-            # 2. Identity Check (Who?)
-            has_identity = any(kw in full_text for kw in IDENTITY_KEYWORDS)
-            
-            # 3. Persecution Check (What happened?)
-            has_persecution = any(kw in full_text for kw in PERSECUTION_KEYWORDS)
-            
-            # 4. Negative Check (Is it just general news?)
-            has_negative = any(kw in full_text for kw in NEGATIVE_KEYWORDS)
-
-            if not (has_identity and has_persecution) or has_negative:
-                # Extra check: if it's from a known persecution-only source like EFI, be a bit more lenient
-                if entry_data['source_name'] == "Evangelical Fellowship of India" and (has_identity or has_persecution):
-                    pass # Keep it
-                else:
-                    continue
-
-            # 3. Look for similar incidents in the last 72 hours
-            three_days_ago = (datetime.now() - timedelta(days=3)).isoformat()
-            recent_incidents = supabase.table("incidents").select("*").gt("incident_date", three_days_ago).execute()
-            
-            match_found = False
-            for existing in recent_incidents.data:
-                similarity = fuzz.token_set_ratio(title.lower(), existing['title'].lower())
-                if similarity > 75: # 75% similarity threshold
-                    # Found a broad match, add this source to the existing incident
-                    updated_sources = existing['sources']
-                    updated_sources.append({"name": entry_data['source_name'], "url": link})
-                    
-                    # Update image if existing doesn't have one
-                    update_data = {"sources": updated_sources}
-                    if not existing.get('image_url') and image_url:
-                        update_data['image_url'] = image_url
-                        
-                    supabase.table("incidents").update(update_data).eq("id", existing['id']).execute()
-                    print(f"Grouped (Similarity {similarity}%): {title[:50]} with existing incident.")
-                    match_found = True
-                    break
-            
-            if not match_found:
-                # Add to batch for ingestion
-                incidents_to_ingest.append({
-                    "title": title,
-                    "incident_date": incident_date.isoformat(),
-                    "description": description,
-                    "location_raw": location,
-                    "sources": [{"name": entry_data['source_name'], "url": link}],
-                    "is_verified": False,
+                all_raw_entries.append({
+                    "title": entry.title,
+                    "link": entry.link,
+                    "description": content,
+                    "published": entry.get("published", entry.get("updated", datetime.now().isoformat())),
+                    "source_name": feed_info['name'],
                     "image_url": image_url
                 })
-
-        except Exception as e:
-            print(f"Error processing {entry_data.get('link', 'unknown')}: {e}")
-
-    # Process Batch Ingestion
-    if incidents_to_ingest:
-        print(f"Processing batch of {len(incidents_to_ingest)} new incidents...")
-        
-        # Split into smaller batches for Gemini (max 5 at a time)
-        # Reduced batch size for better free tier reliability
-        batch_size = 3
-        for i in range(0, len(incidents_to_ingest), batch_size):
-            batch = incidents_to_ingest[i:i + batch_size]
-            print(f"Summarizing batch {i//batch_size + 1}...")
-            summaries = batch_summarize_incidents(batch)
             
-            for index, inc in enumerate(batch):
-                inc['summary'] = summaries[index]
-            
-            # Insert batch into Supabase
+        # 2. Fetch NGO Scraped Data (EFI is currently special-cased logic)
+        efi_entries = scrape_efi_news()
+        all_raw_entries.extend(efi_entries)
+    
+        # 3. Fetch Social Sentinels from DB
+        social_sources = [s for s in db_sources if s['source_type'] == 'social']
+        social_entries = fetch_social_sentinels(social_sources)
+        all_raw_entries.extend(social_entries)
+    
+        # Efficiency Settings
+        DAYS_LOOKBACK = 3
+        threshold_date = datetime.now(timezone.utc) - timedelta(days=DAYS_LOOKBACK)
+        print(f"Daily Run: Focusing on incidents since {threshold_date.strftime('%Y-%m-%d')}")
+
+        for entry_data in all_raw_entries:
             try:
-                supabase.table("incidents").insert(batch).execute()
-                print(f"Successfully ingested {len(batch)} incidents.")
-            except Exception as e:
-                print(f"Error inserting batch: {e}")
+                # 1. Date Filter (Check this FIRST to avoid unnecessary scraping)
+                pub_date_str = entry_data.get("published", datetime.now(timezone.utc).isoformat())
+                try:
+                    incident_date = date_parser.parse(pub_date_str)
+                    # Ensure awareness for comparison
+                    if incident_date.tzinfo is None:
+                        incident_date = incident_date.replace(tzinfo=timezone.utc)
+                except Exception:
+                    incident_date = datetime.now(timezone.utc)
             
-            # Cooldown between batches
-            if i + batch_size < len(incidents_to_ingest):
-                print(f"Cooling down for 10s before next batch...")
-                time.sleep(10)
+                # Use Sliding Window (3 days) OR 2026 Hard Floor
+                if incident_date < threshold_date or incident_date.year < 2026:
+                    # print(f"Skipping old/historical entry: {entry_data['title'][:50]}...")
+                    continue
+
+                # 2. Early URL Check (Avoid processing articles we already have)
+                link = entry_data['link']
+                existing_by_url = supabase.table("incidents").select("id").filter("sources", "cs", f'[{{"url": "{link}"}}]').execute()
+                if existing_by_url.data:
+                    # print(f"URL already in DB, skipping: {entry_data['title'][:50]}...")
+                    continue
+
+                title = clean_title(entry_data['title'])
+                # Sanitize description (remove HTML)
+                description = sanitize_text(entry_data['description'])
+            
+                # DEEP SCRAPE: If description is too short, fetch the actual page
+                if len(description) < 500 and link and not "twitter.com" in link and not "xcancel.com" in link:
+                    full_text = deep_scrape_article(link)
+                    if len(full_text) > len(description):
+                        description = full_text
+            
+                # Extract specific location
+                location = extract_location(title, description)
+            
+                # Image URL from source
+                image_url = entry_data.get('image_url')
+                
+                # India?
+                full_text = f"{title} {description}".lower()
+                if not "india" in full_text:
+                    continue
+            
+                # 2. Identity Check (Who?)
+                has_identity = any(kw in full_text for kw in IDENTITY_KEYWORDS)
+            
+                # 3. Persecution Check (What happened?)
+                has_persecution = any(kw in full_text for kw in PERSECUTION_KEYWORDS)
+            
+                # 4. Negative Check (Is it just general news?)
+                has_negative = any(kw in full_text for kw in NEGATIVE_KEYWORDS)
+
+                if not (has_identity and has_persecution) or has_negative:
+                    # Extra check: if it's from a known persecution-only source like EFI, be a bit more lenient
+                    if entry_data['source_name'] == "Evangelical Fellowship of India" and (has_identity or has_persecution):
+                        pass # Keep it
+                    else:
+                        continue
+
+                # 3. Look for similar incidents in the last 72 hours
+                three_days_ago = (datetime.now() - timedelta(days=3)).isoformat()
+                recent_incidents = supabase.table("incidents").select("*").gt("incident_date", three_days_ago).execute()
+            
+                match_found = False
+                for existing in recent_incidents.data:
+                    similarity = fuzz.token_set_ratio(title.lower(), existing['title'].lower())
+                    if similarity > 75: # 75% similarity threshold
+                        # Found a broad match, add this source to the existing incident
+                        updated_sources = existing['sources']
+                        updated_sources.append({"name": entry_data['source_name'], "url": link})
+                    
+                        # Update image if existing doesn't have one
+                        update_data = {"sources": updated_sources}
+                        if not existing.get('image_url') and image_url:
+                            update_data['image_url'] = image_url
+                        
+                        supabase.table("incidents").update(update_data).eq("id", existing['id']).execute()
+                        print(f"Grouped (Similarity {similarity}%): {title[:50]} with existing incident.")
+                        match_found = True
+                        break
+            
+                if not match_found:
+                    # Add to batch for ingestion
+                    incidents_to_ingest.append({
+                        "title": title,
+                        "incident_date": incident_date.isoformat(),
+                        "description": description,
+                        "location_raw": location,
+                        "sources": [{"name": entry_data['source_name'], "url": link}],
+                        "is_verified": False,
+                        "image_url": image_url
+                    })
+
+            except Exception as e:
+                print(f"Error processing {entry_data.get('link', 'unknown')}: {e}")
+
+        # Process Batch Ingestion
+        if incidents_to_ingest:
+            print(f"Processing batch of {len(incidents_to_ingest)} new incidents...")
         
-        logger.log("job_completed", "INFO", {"incidents_added": len(incidents_to_ingest)})
+            # Split into smaller batches for Gemini (max 5 at a time)
+            # Reduced batch size for better free tier reliability
+            batch_size = 3
+            for i in range(0, len(incidents_to_ingest), batch_size):
+                batch = incidents_to_ingest[i:i + batch_size]
+                print(f"Summarizing batch {i//batch_size + 1}...")
+                summaries = batch_summarize_incidents(batch)
+            
+                for index, inc in enumerate(batch):
+                    inc['summary'] = summaries[index]
+            
+                # Insert batch into Supabase
+                try:
+                    supabase.table("incidents").insert(batch).execute()
+                    print(f"Successfully ingested {len(batch)} incidents.")
+                except Exception as e:
+                    print(f"Error inserting batch: {e}")
+            
+                # Cooldown between batches
+                if i + batch_size < len(incidents_to_ingest):
+                    print(f"Cooling down for 10s before next batch...")
+                    time.sleep(10)
+        
+            logger.log("job_completed", "INFO", {"incidents_added": len(incidents_to_ingest)})
 
     except Exception as e:
         print(f"CRITICAL ERROR in ingestion: {e}")
