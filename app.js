@@ -17,7 +17,11 @@ const App = () => {
 
     // --- Admin State ---
     const [isLoggedIn, setIsLoggedIn] = useState(localStorage.getItem('cprn-logged-in') === 'true');
-    const [adminView, setAdminView] = useState('none'); // 'none', 'sources', 'incidents', 'users'
+    const [adminView, setAdminView] = useState('none');
+    const [adminCreds, setAdminCreds] = useState({
+        user: localStorage.getItem('cprn-admin-user') || '',
+        hash: localStorage.getItem('cprn-admin-hash') || ''
+    });
     const [loginError, setLoginError] = useState("");
 
     // --- Visitor & Prayer State ---
@@ -61,7 +65,10 @@ const App = () => {
 
         if (data) {
             setIsLoggedIn(true);
+            setAdminCreds({ user: username, hash: hash });
             localStorage.setItem('cprn-logged-in', 'true');
+            localStorage.setItem('cprn-admin-user', username);
+            localStorage.setItem('cprn-admin-hash', hash);
             setLoginError("");
             setAdminView('sources');
         } else {
@@ -71,7 +78,10 @@ const App = () => {
 
     const handleLogout = () => {
         setIsLoggedIn(false);
+        setAdminCreds({ user: '', hash: '' });
         localStorage.removeItem('cprn-logged-in');
+        localStorage.removeItem('cprn-admin-user');
+        localStorage.removeItem('cprn-admin-hash');
         setAdminView('none');
     };
 
@@ -459,11 +469,11 @@ const App = () => {
         const [logs, setLogs] = useState([]);
 
         const fetchLogs = async () => {
-            const { data } = await supabaseClient
-                .from('system_events')
-                .select('*')
-                .order('created_at', { ascending: false })
-                .limit(100);
+            if (!adminCreds.user) return;
+            const { data } = await supabaseClient.rpc('get_secure_logs', {
+                p_user: adminCreds.user,
+                p_hash: adminCreds.hash
+            });
             setLogs(data || []);
         };
 

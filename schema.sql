@@ -113,4 +113,30 @@ CREATE TABLE system_events (
 CREATE INDEX idx_system_events_type ON system_events(event_type);
 CREATE INDEX idx_system_events_created ON system_events(created_at DESC);
 
+-- Secure Gateway for Logs (Guards data behind admin credentials)
+CREATE OR REPLACE FUNCTION get_secure_logs(p_user TEXT, p_hash TEXT)
+RETURNS SETOF system_events AS $$
+BEGIN
+    -- Only return data if the credentials match a dashboard user
+    IF EXISTS (
+        SELECT 1 FROM dashboard_users 
+        WHERE username = p_user AND password_hash = p_hash
+    ) THEN
+        RETURN QUERY SELECT * FROM system_events ORDER BY created_at DESC LIMIT 200;
+    ELSE
+        RETURN;
+    END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Finalize Permissions
+ALTER TABLE system_events ENABLE ROW LEVEL SECURITY;
+
+-- Allow public INSERT (for tracking) but NO public SELECT
+DROP POLICY IF EXISTS "Enable insert for all" ON system_events;
+CREATE POLICY "Enable insert for all" ON system_events FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Enable read for all" ON system_events;
+-- Note: SELECT is now handled solely via the get_secure_logs RPC for admins.
+
 COMMENT ON TABLE system_events IS 'Unified bucket for analytics, job logs, and error reports.';
