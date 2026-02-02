@@ -469,15 +469,24 @@ const App = () => {
         const [logs, setLogs] = useState([]);
 
         const fetchLogs = async () => {
-            if (!adminCreds.user) return;
-            const { data } = await supabaseClient.rpc('get_secure_logs', {
+            if (!adminCreds.user) {
+                console.warn("Session incomplete. Please Log Out and Log In again to view secure logs.");
+                return;
+            }
+            const { data, error } = await supabaseClient.rpc('get_secure_logs', {
                 p_user: adminCreds.user,
                 p_hash: adminCreds.hash
             });
+            if (error) {
+                console.error("RPC Error fetching logs:", error);
+            }
             setLogs(data || []);
         };
 
-        useEffect(() => { fetchLogs(); }, []);
+        useEffect(() => {
+            fetchLogs();
+            if (window.lucide) window.lucide.createIcons();
+        }, []);
 
         return (
             <div>
