@@ -230,7 +230,7 @@ const App = () => {
     // --- Sub-components for Admin ---
     const AdminSources = () => {
         const [sources, setSources] = useState([]);
-        const [newSource, setNewSource] = useState({ name: '', url_or_handle: '', source_type: 'rss' });
+        const [newSource, setNewSource] = useState({ name: '', url_or_handle: '', source_type: 'rss', source_persona: 'NEUTRAL', social_platform: 'X' });
 
         const fetchSources = async () => {
             const { data } = await supabaseClient.from('crawler_sources').select('*').order('name');
@@ -252,8 +252,9 @@ const App = () => {
         };
 
         const addSource = async () => {
+            if (!newSource.name || !newSource.url_or_handle) return alert("Please fill name and URL/Handle");
             await supabaseClient.from('crawler_sources').insert([newSource]);
-            setNewSource({ name: '', url_or_handle: '', source_type: 'rss' });
+            setNewSource({ name: '', url_or_handle: '', source_type: 'rss', source_persona: 'NEUTRAL', social_platform: 'X' });
             fetchSources();
         };
 
@@ -266,7 +267,8 @@ const App = () => {
                             <tr>
                                 <th>Name</th>
                                 <th>Type</th>
-                                <th>URL / Handle</th>
+                                <th>Platform</th>
+                                <th>Persona</th>
                                 <th>Active</th>
                                 <th>Actions</th>
                             </tr>
@@ -276,7 +278,15 @@ const App = () => {
                                 <tr key={s.id}>
                                     <td>{s.name}</td>
                                     <td><span className="badge">{s.source_type}</span></td>
-                                    <td>{s.url_or_handle}</td>
+                                    <td>{s.social_platform || '-'}</td>
+                                    <td>
+                                        <span className="badge" style={{
+                                            background: s.source_persona === 'HOSTILE' ? 'var(--accent-red)' :
+                                                s.source_persona === 'WATCHDOG' ? 'var(--accent-gold)' : 'var(--bg-tertiary)'
+                                        }}>
+                                            {s.source_persona}
+                                        </span>
+                                    </td>
                                     <td>
                                         <input type="checkbox" checked={s.is_active} onChange={() => toggleSource(s.id, s.is_active)} />
                                     </td>
@@ -290,17 +300,132 @@ const App = () => {
                         </tbody>
                     </table>
                 </div>
-                <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
+                <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '8px', marginTop: '1rem' }}>
                     <h4>Add New Source</h4>
                     <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                        <input className="form-input" style={{ flex: 1 }} placeholder="Name (e.g. AsiaNews)" value={newSource.name} onChange={e => setNewSource({ ...newSource, name: e.target.value })} />
-                        <input className="form-input" style={{ flex: 2 }} placeholder="URL or X Handle" value={newSource.url_or_handle} onChange={e => setNewSource({ ...newSource, url_or_handle: e.target.value })} />
+                        <input className="form-input" style={{ flex: 1, minWidth: '150px' }} placeholder="Name (e.g. AsiaNews)" value={newSource.name} onChange={e => setNewSource({ ...newSource, name: e.target.value })} />
+                        <input className="form-input" style={{ flex: 2, minWidth: '200px' }} placeholder="URL or X Handle" value={newSource.url_or_handle} onChange={e => setNewSource({ ...newSource, url_or_handle: e.target.value })} />
                         <select className="form-input" style={{ flex: 1 }} value={newSource.source_type} onChange={e => setNewSource({ ...newSource, source_type: e.target.value })}>
                             <option value="rss">RSS Feed</option>
-                            <option value="social">X (Twitter) Handle</option>
+                            <option value="social">Social Media Handle</option>
                         </select>
+                        {newSource.source_type === 'social' && (
+                            <>
+                                <select className="form-input" style={{ flex: 1 }} value={newSource.social_platform} onChange={e => setNewSource({ ...newSource, social_platform: e.target.value })}>
+                                    <option value="X">X (Twitter)</option>
+                                    <option value="FACEBOOK">Facebook</option>
+                                    <option value="YOUTUBE">YouTube</option>
+                                    <option value="INSTAGRAM">Instagram</option>
+                                </select>
+                                <select className="form-input" style={{ flex: 1 }} value={newSource.source_persona} onChange={e => setNewSource({ ...newSource, source_persona: e.target.value })}>
+                                    <option value="NEUTRAL">Neutral</option>
+                                    <option value="WATCHDOG">Watchdog (Friendly)</option>
+                                    <option value="HOSTILE">Hostile (Anti-Christian)</option>
+                                </select>
+                            </>
+                        )}
                         <button className="btn-action" onClick={addSource}>Add Source</button>
                     </div>
+                </div>
+            </div>
+        );
+    };
+
+    const AdminSocialConfig = () => {
+        const [accounts, setAccounts] = useState([]);
+        const [newAccount, setNewAccount] = useState({ platform: 'X', username: '', cookies_json: '', is_active: true });
+
+        const fetchAccounts = async () => {
+            const { data, error } = await supabaseClient.rpc('manage_social_config', {
+                p_user: adminCreds.user,
+                p_hash: adminCreds.hash,
+                p_action: 'GET_ACCOUNTS'
+            });
+            if (data?.success) setAccounts(data.data || []);
+        };
+
+        useEffect(() => { fetchAccounts(); }, []);
+
+        const saveAccount = async () => {
+            if (!newAccount.username || !newAccount.cookies_json) return alert("Please fill username and cookies");
+            const { data } = await supabaseClient.rpc('manage_social_config', {
+                p_user: adminCreds.user,
+                p_hash: adminCreds.hash,
+                p_action: 'UPSERT_ACCOUNT',
+                p_data: newAccount
+            });
+            if (data?.success) {
+                setNewAccount({ platform: 'X', username: '', cookies_json: '', is_active: true });
+                fetchAccounts();
+            }
+        };
+
+        return (
+            <div>
+                <h3>Social Media Burner Accounts</h3>
+                <p style={{ fontSize: '0.85rem', opacity: 0.7, marginBottom: '1.5rem' }}>
+                    Configure the logged-in sessions used by the automated scrapers.
+                </p>
+                <div className="admin-table-container">
+                    <table className="admin-table">
+                        <thead>
+                            <tr>
+                                <th>Platform</th>
+                                <th>Username</th>
+                                <th>Last Used</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {accounts.map(acc => (
+                                <tr key={acc.id}>
+                                    <td><span className="badge">{acc.platform}</span></td>
+                                    <td>{acc.username}</td>
+                                    <td>{acc.last_used_at ? new Date(acc.last_used_at).toLocaleString() : 'Never'}</td>
+                                    <td>{acc.is_active ? '✅ Active' : '❌ Disabled'}</td>
+                                    <td>
+                                        <button className="btn-icon" onClick={() => {
+                                            if (confirm("Disable account?")) {
+                                                const { id, ...rest } = acc;
+                                                setNewAccount({ ...rest, is_active: false });
+                                                // Note: Implementation for delete/disable via RPC would go here
+                                            }
+                                        }}>
+                                            <i data-lucide="power"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+                <div style={{ padding: '1.5rem', background: 'var(--bg-secondary)', borderRadius: '12px', marginTop: '2rem', border: '1px solid var(--accent-gold)' }}>
+                    <h4>Add/Update Account Session</h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                        <div className="form-group">
+                            <label className="form-label">Platform</label>
+                            <select className="form-input" value={newAccount.platform} onChange={e => setNewAccount({ ...newAccount, platform: e.target.value })}>
+                                <option value="X">X (Twitter)</option>
+                                <option value="FACEBOOK">Facebook</option>
+                            </select>
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">Username</label>
+                            <input className="form-input" placeholder="@handle" value={newAccount.username} onChange={e => setNewAccount({ ...newAccount, username: e.target.value })} />
+                        </div>
+                    </div>
+                    <div className="form-group">
+                        <label className="form-label">Session Cookies (JSON String)</label>
+                        <textarea
+                            className="form-input"
+                            style={{ minHeight: '100px', fontSize: '0.8rem', fontFamily: 'monospace' }}
+                            placeholder='Paste the content of your cookies file here...'
+                            value={newAccount.cookies_json}
+                            onChange={e => setNewAccount({ ...newAccount, cookies_json: e.target.value })}
+                        ></textarea>
+                    </div>
+                    <button className="btn-read-more" onClick={saveAccount}>Save Account Session</button>
                 </div>
             </div>
         );
@@ -665,7 +790,10 @@ const App = () => {
                 <div className="admin-portal">
                     <div className="admin-nav">
                         <div className={`nav-item ${adminView === 'sources' ? 'active' : ''}`} onClick={() => setAdminView('sources')}>
-                            <i data-lucide="refresh-ccw" style={{ width: '14px', marginRight: '0.5rem' }}></i> Sources
+                            <i data-lucide="rss" style={{ width: '14px', marginRight: '0.5rem' }}></i> Sources
+                        </div>
+                        <div className={`nav-item ${adminView === 'social' ? 'active' : ''}`} onClick={() => setAdminView('social')}>
+                            <i data-lucide="share-2" style={{ width: '14px', marginRight: '0.5rem' }}></i> Social Config
                         </div>
                         <div className={`nav-item ${adminView === 'incidents' ? 'active' : ''}`} onClick={() => setAdminView('incidents')}>
                             <i data-lucide="alert-circle" style={{ width: '14px', marginRight: '0.5rem' }}></i> Manage Reports
@@ -683,6 +811,7 @@ const App = () => {
 
                     <div className="admin-content">
                         {adminView === 'sources' && <AdminSources />}
+                        {adminView === 'social' && <AdminSocialConfig />}
                         {adminView === 'incidents' && <AdminIncidents />}
                         {adminView === 'users' && <AdminUsers />}
                         {adminView === 'logs' && <AdminLogs />}

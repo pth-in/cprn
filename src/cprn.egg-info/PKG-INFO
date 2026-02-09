@@ -1,3 +1,20 @@
+Metadata-Version: 2.4
+Name: cprn
+Version: 0.1.0
+Summary: Christian Persecution Reporting Network Ingestion Pipeline
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: feedparser
+Requires-Dist: supabase
+Requires-Dist: python-dateutil
+Requires-Dist: thefuzz
+Requires-Dist: python-Levenshtein
+Requires-Dist: beautifulsoup4
+Requires-Dist: requests
+Requires-Dist: python-dotenv
+Requires-Dist: google-genai
+Requires-Dist: twikit
+
 ---
 title: "Serving the Persecuted: A Mission of Love and Non-Violence"
 date: 2026-01-02
@@ -57,39 +74,6 @@ We are one body in Christ. When one part suffers, the whole body feels the pain.
 > **Galatians 6:2 (NIV)** - "Carry each other’s burdens, and in this way you will fulfill the law of Christ."
 
 If you feel called to serve our persecuted family with the heart of Jesus, we invite you to pray with us and stand together in love.
-
----
-
-## Technical Documentation
-
-### Project Structure
-The project has been refactored into a modular Python package:
-- `src/cprn/core/`: Centralized logic for configuration, logging, and Gemini integration.
-- `src/cprn/scavengers/`: Ingestion modules for news and social media.
-- `src/cprn/utils/`: Shared helper functions.
-- `local_scripts/`: Local utility and setup scripts.
-
-### Installation
-To install the project as an editable package:
-```bash
-pip install -e .
-```
-
-### Usage (CLI)
-The project provides a unified CLI command `cprn`:
-
-**News Ingestion:**
-```bash
-cprn ingest --days 7 --limit 10
-```
-
-**Social Media Ingestion (X):**
-```bash
-cprn social --days 3
-```
-
-### Local Setup Scripts
-Scripts for local configuration (e.g., setting up X auth, seeding data) are located in the `local_scripts/` directory.
 
 ---
 

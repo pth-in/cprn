@@ -13,3 +13,4 @@ brain/
 test/*.txt
 test/__pycache__/
 test/*.pyc
+x_cookies.json

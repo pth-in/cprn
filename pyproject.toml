@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cprn"
+version = "0.1.0"
+description = "Christian Persecution Reporting Network Ingestion Pipeline"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "feedparser",
+    "supabase",
+    "python-dateutil",
+    "thefuzz",
+    "python-Levenshtein",
+    "beautifulsoup4",
+    "requests",
+    "python-dotenv",
+    "google-genai",
+    "twikit",
+]
+
+[project.scripts]
+cprn = "cprn.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

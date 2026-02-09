@@ -35,7 +35,20 @@ CREATE TABLE crawler_sources (
     name TEXT NOT NULL,
     url_or_handle TEXT NOT NULL UNIQUE,
     source_type TEXT NOT NULL, -- 'rss', 'social', 'google_search'
+    source_persona TEXT DEFAULT 'NEUTRAL', -- 'WATCHDOG', 'HOSTILE', 'NEUTRAL'
+    social_platform TEXT, -- 'X', 'FACEBOOK', 'YOUTUBE', 'INSTAGRAM'
     is_active BOOLEAN DEFAULT true
+);
+
+-- Table for Social Media Burner Accounts
+CREATE TABLE social_accounts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ DEFAULT now(),
+    platform TEXT NOT NULL, -- 'X', 'FACEBOOK', etc.
+    username TEXT NOT NULL,
+    cookies_json TEXT, -- Session cookies string
+    is_active BOOLEAN DEFAULT true,
+    last_used_at TIMESTAMPTZ
 );
 
 -- Table for Admin Users (Simple Auth)
@@ -130,13 +143,76 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Finalize Permissions
-ALTER TABLE system_events ENABLE ROW LEVEL SECURITY;
+-- Finalize Permissions for new tables
+ALTER TABLE crawler_sources ENABLE ROW LEVEL SECURITY;
+ALTER TABLE social_accounts ENABLE ROW LEVEL SECURITY;
 
--- Allow public INSERT (for tracking) but NO public SELECT
-DROP POLICY IF EXISTS "Enable insert for all" ON system_events;
-CREATE POLICY "Enable insert for all" ON system_events FOR INSERT WITH CHECK (true);
+-- Allow public read of crawler_sources (dashboard uses it)
+DROP POLICY IF EXISTS "Allow public read sources" ON crawler_sources;
+CREATE POLICY "Allow public read sources" ON crawler_sources FOR SELECT USING (true);
 
-DROP POLICY IF EXISTS "Enable read for all" ON system_events;
--- Note: SELECT is now handled solely via the get_secure_logs RPC for admins.
+-- No public read/write for social_accounts (sensitive cookies)
+-- Managed via Secure RPCs
+
+-- Secure RPC to fetch/update social config
+CREATE OR REPLACE FUNCTION manage_social_config(
+    p_user TEXT, 
+    p_hash TEXT, 
+    p_action TEXT, 
+    p_data JSONB DEFAULT '{}'
+)
+RETURNS JSONB AS $$
+DECLARE
+    v_result JSONB;
+BEGIN
+    -- Verify Admin
+    IF NOT EXISTS (SELECT 1 FROM dashboard_users WHERE username = p_user AND password_hash = p_hash) THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Unauthorized');
+    END IF;
+
+    IF p_action = 'GET_ACCOUNTS' THEN
+        SELECT jsonb_agg(t) INTO v_result FROM (SELECT * FROM social_accounts) t;
+        RETURN jsonb_build_object('success', true, 'data', v_result);
+    
+    ELSIF p_action = 'UPSERT_ACCOUNT' THEN
+        INSERT INTO social_accounts (platform, username, cookies_json, is_active)
+        VALUES (
+            p_data->>'platform', 
+            p_data->>'username', 
+            p_data->>'cookies_json', 
+            (p_data->>'is_active')::BOOLEAN
+        )
+        ON CONFLICT (username) DO UPDATE SET
+            cookies_json = EXCLUDED.cookies_json,
+            is_active = EXCLUDED.is_active;
+        RETURN jsonb_build_object('success', true);
+
+    ELSIF p_action = 'GET_SOURCES' THEN
+        SELECT jsonb_agg(t) INTO v_result FROM (SELECT * FROM crawler_sources ORDER BY name) t;
+        RETURN jsonb_build_object('success', true, 'data', v_result);
+
+    ELSIF p_action = 'UPSERT_SOURCE' THEN
+        INSERT INTO crawler_sources (name, url_or_handle, source_type, source_persona, social_platform, is_active)
+        VALUES (
+            p_data->>'name', 
+            p_data->>'url_or_handle', 
+            p_data->>'source_type', 
+            p_data->>'source_persona', 
+            p_data->>'social_platform',
+            (p_data->>'is_active')::BOOLEAN
+        )
+        ON CONFLICT (url_or_handle) DO UPDATE SET
+            name = EXCLUDED.name,
+            source_persona = EXCLUDED.source_persona,
+            social_platform = EXCLUDED.social_platform,
+            is_active = EXCLUDED.is_active;
+        RETURN jsonb_build_object('success', true);
+
+    ELSE
+        RETURN jsonb_build_object('success', false, 'error', 'Invalid Action');
+    END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 COMMENT ON TABLE system_events IS 'Unified bucket for analytics, job logs, and error reports.';
+COMMENT ON TABLE social_accounts IS 'Sensitive store for social media session cookies.';

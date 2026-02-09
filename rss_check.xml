@@ -1,0 +1,20 @@
+  <?xml version="1.0" encoding="UTF-8"?>
+  <rss xmlns:atom="http://www.w3.org/2005/Atom" xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0">
+    <channel>
+      <atom:link href="https://rss.xcancel.com/VedicWisdom1/rss" rel="self" type="application/rss+xml" />
+      <title>RSS reader not yet whitelisted!</title>
+      <link>https://rss.xcancel.com/VedicWisdom1/rss</link>
+      <description>RSS reader not yet whitelist! Please send an email rss [AT] xcancel [DOT] com with this ID to get your RSS feed reader whitelisted: 4870e1b71f2a0f88036d939e7097e1306ccb538f133116640057da0eaca487ae110036b955fd3d265d1c54b12a44ab570137556d4c6610af03705f586362c94d83a1bb492bb24525edec6615b3e61fcfa438f3c7ec320111764662d842fece5cff3eec4638e7e4c2cfdb56171d478e9938fb6e82b7215f5f1d5106ac52e03144f823d3f5df260a876f32b44c5d254a3e</description>
+      <language>en-us</language>
+      <ttl>1</ttl>
+        <item>
+          <title>RSS reader not yet whitelisted!</title>
+          <dc:creator>@xcancel</dc:creator>
+          <description>RSS reader not yet whitelist! Plain request with just the ID will be ignored! Please send an email rss [AT] xcancel [DOT] com with the reason why you want your RSS feed reader to be whitelist and this ID: 4870e1b71f2a0f88036d939e7097e1306ccb538f133116640057da0eaca487ae110036b955fd3d265d1c54b12a44ab570137556d4c6610af03705f586362c94d83a1bb492bb24525edec6615b3e61fcfa438f3c7ec320111764662d842fece5cff3eec4638e7e4c2cfdb56171d478e9938fb6e82b7215f5f1d5106ac52e03144f823d3f5df260a876f32b44c5d254a3e</description>
+          <pubDate>Mon, 01 January 1971 00:00:00 GMT</pubDate>
+          <guid>https://rss.xcancel.com/VedicWisdom1/rss</guid>
+          <link>https://rss.xcancel.com/VedicWisdom1/rss</link>
+        </item>
+    </channel>
+  </rss>
+

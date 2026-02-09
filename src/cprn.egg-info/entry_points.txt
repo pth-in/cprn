@@ -1,0 +1,2 @@
+[console_scripts]
+cprn = cprn.cli:main
